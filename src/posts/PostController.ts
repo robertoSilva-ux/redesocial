@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { PostNotFoundError, TagNotFoundError, UserNotFoundError, ValidationError } from '../shared/errors.js';
+import { buildOrderBy, buildPage, parsePagination, SORTABLE_FIELDS } from '../shared/pagination.js';
 
 export class PostController {
   constructor(private readonly prisma: PrismaClient) {}
@@ -61,15 +62,51 @@ export class PostController {
     return post;
   }
 
-  async listByTag(name: string) {
-    const tag = await this.prisma.tag.findUnique({
-      where: { name },
-      // include de multilpos niveis
-      include: { posts: { include: { author: true }, orderBy: { createdAt: 'desc' } } },
-    });
+  // Listagem global paginada: GET /posts?page=&pageSize=&sort=&order=
+  async list(query: unknown) {
+    const page = parsePagination(query, { sortable: SORTABLE_FIELDS.post });
+
+    const [posts, total] = await Promise.all([
+      this.prisma.post.findMany({
+        include: {
+          author: { select: { id: true, name: true, avatarUrl: true } },
+          tags: true,
+          _count: { select: { comments: true, likes: true } },
+        },
+        orderBy: buildOrderBy(page),
+        skip: page.skip,
+        take: page.take,
+      }),
+      this.prisma.post.count(),
+    ]);
+
+    return buildPage(posts, total, page);
+  }
+
+  async listByTag(name: string, query: unknown) {
+    const page = parsePagination(query, { sortable: SORTABLE_FIELDS.post });
+
+    const tag = await this.prisma.tag.findUnique({ where: { name } });
     if (!tag) {
       throw new TagNotFoundError(name);
     }
-    return tag.posts;
+
+    // Filtra pela relação em vez de carregar `tag.posts` inteiro: assim o
+    // skip/take acontecem no banco (LIMIT/OFFSET), não na memória.
+    const where = { tags: { some: { name } } };
+
+    const [posts, total] = await Promise.all([
+      this.prisma.post.findMany({
+        where,
+        // include de multilpos niveis
+        include: { author: true, tags: true },
+        orderBy: buildOrderBy(page),
+        skip: page.skip,
+        take: page.take,
+      }),
+      this.prisma.post.count({ where }),
+    ]);
+
+    return buildPage(posts, total, page);
   }
 }

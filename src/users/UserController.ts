@@ -7,6 +7,7 @@ import {
   UserNotFoundError,
   ValidationError,
 } from '../shared/errors.js';
+import { buildOrderBy, buildPage, parsePagination, SORTABLE_FIELDS } from '../shared/pagination.js';
 
 export class UserController {
   constructor(private readonly prisma: PrismaClient) {}
@@ -84,19 +85,30 @@ export class UserController {
   // Feed = posts de quem eu sigo. Mostra um filtro relacional aninhado:
   // "posts cujo autor tem, entre seus seguidores, um Follow onde eu sou o
   // follower" — sem precisar buscar a lista de ids manualmente antes.
-  async feed(userId: number) {
+  async feed(userId: number, query: unknown) {
+    const page = parsePagination(query, { sortable: SORTABLE_FIELDS.post });
+
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new UserNotFoundError(userId);
     }
 
-    return this.prisma.post.findMany({
-      // O FOLLOWER ID DE ALGUNS DOS SEGUIDORES DO AUTOR DO POST É O ID DO USUÁRIO LOGADO
-      // FEED SÃO OS POSTS DE TODOS QUE ESTOU SEGUINDO
-      // BUSCA AUTORES QUE ESTOU SEGUINDO
-      where: { author: { followers: { some: { followerId: userId } } } },
-      include: { author: true, tags: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    // O FOLLOWER ID DE ALGUNS DOS SEGUIDORES DO AUTOR DO POST É O ID DO USUÁRIO LOGADO
+    // FEED SÃO OS POSTS DE TODOS QUE ESTOU SEGUINDO
+    // BUSCA AUTORES QUE ESTOU SEGUINDO
+    const where = { author: { followers: { some: { followerId: userId } } } };
+
+    const [posts, total] = await Promise.all([
+      this.prisma.post.findMany({
+        where,
+        include: { author: true, tags: true },
+        orderBy: buildOrderBy(page),
+        skip: page.skip,
+        take: page.take,
+      }),
+      this.prisma.post.count({ where }),
+    ]);
+
+    return buildPage(posts, total, page);
   }
 }
