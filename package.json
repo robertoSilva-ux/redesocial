@@ -1,0 +1,43 @@
+{
+  "name": "aula04-rede-social",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Aula 04 - camada de persistência com ORM (Prisma): rede social mínima com relação 1:N (User -> Post), N:N (Post <-> Tag) e autorrelação N:N (Follow entre User).",
+  "scripts": {
+    "postinstall": "prisma generate",
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "prisma db seed",
+    "prisma:studio": "node scripts/prisma-studio.mjs"
+  },
+  "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "better-sqlite3": "^13.0.3",
+    "dotenv": "^17.4.2",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/express": "^4.17.25",
+    "@types/node": "^26.2.0",
+    "@types/supertest": "^7.2.1",
+    "@vitest/coverage-v8": "^4.1.11",
+    "prisma": "^7.9.1",
+    "supertest": "^7.2.2",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "@prisma/adapter-better-sqlite3": {
+      "better-sqlite3": "^13.0.3"
+    }
+  }
+}
