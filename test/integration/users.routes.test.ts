@@ -112,7 +112,8 @@ describe('GET /users/:id/feed', () => {
     const res = await request(app).get(`/users/${ana.id}/feed`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].content).toBe('Post do Bruno');
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].content).toBe('Post do Bruno');
+    expect(res.body.meta.total).toBe(1);
   });
 });

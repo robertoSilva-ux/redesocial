@@ -41,7 +41,8 @@ describe('POST /posts', () => {
     await request(app).post('/posts').send({ authorId: author.id, content: 'Post 2', tags: ['prisma'] });
 
     const res = await request(app).get('/tags/prisma/posts');
-    expect(res.body).toHaveLength(2);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.meta.total).toBe(2);
   });
 
   it('rejeita post sem autor existente', async () => {
