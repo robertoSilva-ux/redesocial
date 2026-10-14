@@ -1,0 +1,65 @@
+EVIDENCIAS - Exercicio 2 da Aula 04 (paginacao e ordenacao nas listagens)
+data: 2026-10-13 22:46:18 -03
+
+== npm test ==
+ Test Files  4 passed (4)
+      Tests  40 passed (40)
+   Start at  22:46:18
+   Duration  5.91s (transform 187ms, setup 0ms, import 837ms, tests 2.61s, environment 1ms)
+
+
+== GET /posts (padrao: 10 por pagina, createdAt desc) ==
+{
+    "data": [
+        {
+            "id": 10,
+            "content": "ORM não é mágica, é só uma camada.",
+            "createdAt": "2026-10-14T01:32:25.312Z",
+            "authorId": 9,
+            "author": {
+                "id": 9,
+                "name": "Carla",
+                "avatarUrl": null
+            },
+            "tags": [
+                {
+                    "id": 7,
+                    "name": "orm"
+                }
+            ],
+            "_count": {
+                "comments": 1,
+                "likes": 0
+            }
+        },
+        {
+            "id": 9,
+            "content": "Modelando relações: 1:N, N:N e autorrelação.",
+  ... (meta ao final do corpo)
+meta: {'page': 1, 'pageSize': 10, 'total': 3, 'totalPages': 1, 'hasNext': False, 'sort': 'createdAt', 'order': 'desc'}
+
+== GET /posts?pageSize=2&page=2&order=asc ==
+meta: {'page': 2, 'pageSize': 2, 'total': 3, 'totalPages': 2, 'hasNext': False, 'sort': 'createdAt', 'order': 'asc'}
+conteudos: ['ORM não é mágica, é só uma camada.']
+
+== outras listagens (meta apenas) ==
+/comments                              {'page': 1, 'pageSize': 10, 'total': 3, 'totalPages': 1, 'hasNext': False, 'sort': 'createdAt', 'order': 'desc'}
+/likes                                 {'page': 1, 'pageSize': 10, 'total': 3, 'totalPages': 1, 'hasNext': False, 'sort': 'createdAt', 'order': 'desc'}
+/profiles?sort=displayName&order=asc   {'page': 1, 'pageSize': 10, 'total': 3, 'totalPages': 1, 'hasNext': False, 'sort': 'displayName', 'order': 'asc'}
+/images                                {'page': 1, 'pageSize': 10, 'total': 3, 'totalPages': 1, 'hasNext': False, 'sort': 'createdAt', 'order': 'desc'}
+/users/7/feed                          {'page': 1, 'pageSize': 10, 'total': 3, 'totalPages': 1, 'hasNext': False, 'sort': 'createdAt', 'order': 'desc'}
+/tags/prisma/posts                     {'page': 1, 'pageSize': 10, 'total': 2, 'totalPages': 1, 'hasNext': False, 'sort': 'createdAt', 'order': 'desc'}
+
+== parametros invalidos (esperado 400) ==
+  ?page=0         -> HTTP 400 | "page" deve estar entre 1 e 9007199254740991
+  ?page=abc       -> HTTP 400 | "page" deve ser um número inteiro
+  ?pageSize=0     -> HTTP 400 | "pageSize" deve estar entre 1 e 100
+  ?pageSize=101   -> HTTP 400 | "pageSize" deve estar entre 1 e 100
+  ?sort=senha     -> HTTP 400 | "sort" deve ser um destes campos: createdAt, id
+  ?order=sideways -> HTTP 400 | "order" deve ser "asc" ou "desc"
+
+== sanidade: rotas nao-listagem continuam funcionando ==
+  GET  /posts/8              -> HTTP 200 (post existente)
+  GET  /posts/999            -> HTTP 404 (inexistente)
+  POST /users (email dup)    -> HTTP 409 | Já existe um usuário com o e-mail ana@exemplo.com
+  POST /posts (autor 999999) -> HTTP 404 | Usuário 999999 não encontrado

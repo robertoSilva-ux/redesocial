@@ -238,3 +238,42 @@ GET {{baseUrl}}/posts/999999
 
 ### 404 — tag inexistente
 GET {{baseUrl}}/tags/inexistente/posts
+
+### =========================================================
+### 6. Paginação e ordenação (Exercício 2)
+### Todas as listagens devolvem { data, meta } e aceitam
+### ?page=&pageSize=&sort=&order=
+### =========================================================
+
+### 10 por página (padrão) — confira meta.total, totalPages e hasNext
+GET {{baseUrl}}/posts
+
+### Página 2 com 2 itens por página, mais antigos primeiro
+GET {{baseUrl}}/posts?pageSize=2&page=2&order=asc
+
+### Ordenar por id (campo da lista branca)
+GET {{baseUrl}}/posts?sort=id&order=asc
+
+### Listagens das entidades novas
+GET {{baseUrl}}/comments
+GET {{baseUrl}}/likes
+GET {{baseUrl}}/profiles?sort=displayName&order=asc
+GET {{baseUrl}}/images
+
+### Listagens que já existiam, agora com envelope e paginação
+GET {{baseUrl}}/users/{{createAna.response.body.$.id}}/feed
+GET {{baseUrl}}/tags/prisma/posts?pageSize=5&order=asc
+
+### --- erros de parâmetro (todos 400) ---
+
+### 400 — página inválida
+GET {{baseUrl}}/posts?page=0
+
+### 400 — pageSize fora do limite (1..100)
+GET {{baseUrl}}/posts?pageSize=101
+
+### 400 — campo de ordenação fora da lista branca (a mensagem lista os válidos)
+GET {{baseUrl}}/posts?sort=senha
+
+### 400 — ordem inválida
+GET {{baseUrl}}/posts?order=sideways

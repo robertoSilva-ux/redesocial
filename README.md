@@ -42,10 +42,40 @@ Com a extensão **REST Client** (Huachao Mao) instalada no VS Code, abra [`test.
 | `POST /users` | cria usuário (`{ name, email }`) | — |
 | `GET /users/:id` | usuário + `_count` de posts/seguidores/seguindo | contagem via relação |
 | `POST /users/:id/follow` | segue outro usuário (`{ targetId }`) | **autorrelação N:N** |
-| `GET /users/:id/feed` | posts de quem o usuário segue | filtro relacional aninhado (`author.followers.some`) |
 | `POST /posts` | cria post (`{ authorId, content, tags?: string[] }`) | **1:N** (`connect`) + **N:N** (`connectOrCreate`) na mesma escrita |
 | `GET /posts/:id` | post com autor e tags | `include` |
-| `GET /tags/:name/posts` | posts de uma tag | N:N do outro lado |
+
+### Listagens (todas paginadas e ordenáveis — Exercício 2)
+
+Aceitam `?page=&pageSize=&sort=&order=` e devolvem **sempre** o mesmo envelope:
+
+```json
+{ "data": [ ... ], "meta": { "page": 1, "pageSize": 10, "total": 12, "totalPages": 2, "hasNext": true, "sort": "createdAt", "order": "desc" } }
+```
+
+| Método | Rota | Entidade | Campos aceitos em `sort` |
+| --- | --- | --- | --- |
+| `GET /posts` | todos os posts (com autor, tags e `_count` de comentários/likes) | Post | `createdAt`, `id` |
+| `GET /comments` | todos os comentários (com autor e `_count` de respostas/likes) | Comment | `createdAt`, `id` |
+| `GET /likes` | todos os likes (com usuário e o alvo) | Like | `createdAt`, `id` |
+| `GET /profiles` | todos os perfis (com o usuário) | UserProfile | `createdAt`, `id`, `displayName` |
+| `GET /images` | todas as imagens (com dono e post) | Image | `createdAt`, `id` |
+| `GET /users/:id/feed` | posts de quem o usuário segue | Post | `createdAt`, `id` |
+| `GET /tags/:name/posts` | posts de uma tag | Post | `createdAt`, `id` |
+
+Regras: `page` começa em 1 · `pageSize` vai de 1 a 100 (padrão **10**) · `order` é `asc` ou `desc` (padrão `desc`, mais recentes primeiro) · `sort` só aceita os campos da tabela acima — qualquer outro valor devolve **400** dizendo quais são válidos:
+
+```bash
+curl 'localhost:3003/posts?pageSize=5&sort=createdAt&order=asc'
+curl 'localhost:3003/posts?sort=senha'   # 400: "sort" deve ser um destes campos: createdAt, id
+curl 'localhost:3003/posts?pageSize=101' # 400: "pageSize" deve estar entre 1 e 100
+```
+
+Dois detalhes de implementação (em [`src/shared/pagination.ts`](src/shared/pagination.ts)) que valem a discussão em aula:
+
+1. O `orderBy` **sempre** leva um desempate por `id`. `createdAt` no SQLite tem resolução de **segundo**, então linhas inseridas no mesmo segundo empatam — sem um critério estável, a página 2 pode repetir (ou pular) itens da página 1. Corrigido, e tem teste para isso.
+2. A paginação acontece **no banco**: `skip`/`take` viram `LIMIT`/`OFFSET`. Note que `GET /tags/:name/posts` deixou de carregar `tag.posts` inteiro e passou a filtrar por relação, senão o corte só valeria depois de trazer tudo para a memória.
+3. `total` vem de um `count()` em paralelo com o `findMany` (`Promise.all`) — são duas queries, não uma.
 
 ## Estrutura
 
@@ -56,9 +86,13 @@ prisma/
 
 src/
 ├── db.ts                    fábrica de PrismaClient
-├── users/UserController.ts   create, get, follow, feed
-├── posts/PostController.ts   create, get, listByTag
-├── shared/                   erros de domínio, error handler, asyncHandler
+├── users/UserController.ts   create, get, follow, feed (paginado)
+├── posts/PostController.ts   create, get, list (paginado), listByTag (paginado)
+├── comments/CommentController.ts    list (paginado)
+├── likes/LikeController.ts          list (paginado)
+├── profiles/UserProfileController.ts list (paginado)
+├── images/ImageController.ts        list (paginado)
+├── shared/                   erros de domínio, error handler, asyncHandler, pagination
 ├── routes.ts, server.ts, index.ts
 
 test/
