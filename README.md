@@ -24,6 +24,12 @@ npm test                     # suíte de integração (usa um SQLite dedicado, t
 
 * **Prisma Studio + SQLite no Prisma 7**: o CLI rejeita o `file:./dev.db` (relativo) que vem do `.env` com `! Prisma Studio is not supported for the "file:./dev.db" protocol.` — bug aberto em [`prisma/studio#1578`](https://github.com/prisma/studio/issues/1578). O Studio só aceita `file://` **com caminho absoluto**. Por isso o script `npm run prisma:studio` não chama o CLI direto: ele passa por [`scripts/prisma-studio.mjs`](scripts/prisma-studio.mjs), que converte o `DATABASE_URL` relativo para `file://<caminho absoluto>` e só então abre o Studio. Se quiser chamar na mão: `npx prisma studio --url="file://$PWD/dev.db"`.
 * **npm 12 bloqueia install scripts**: o `postinstall` que rodava `prisma generate` não executa sozinho. Depois de um `npm install` limpo, rode `npx prisma generate` (ou aprove com `npm install-scripts approve prisma`). O mesmo vale para o `node-gyp rebuild` do `better-sqlite3`.
+* **`prisma migrate dev` não regenerou o client neste ambiente** (verificado: `node_modules/.prisma/client/index.d.ts` ficou sem os models novos depois da migration). Regra prática: **depois de qualquer mudança de schema, rode `npx prisma generate` explicitamente** antes de rodar o seed ou a suíte, senão os delegates novos aparecem como `undefined` em runtime e o tsc/LSP acusa `Property 'x' does not exist on type 'PrismaClient'`.
+* **Checksum de migration divergente**: se o Prisma reclamar `The migration ... was modified after it was applied` e quiser rodar `migrate reset` (apagando `dev.db`), verifique antes se a diferença é só cosmética:
+  ```bash
+  python3 -c "import sqlite3,hashlib;con=sqlite3.connect('file:dev.db?mode=ro',uri=True);stored={r[0]:r[1] for r in con.execute('select migration_name,checksum from _prisma_migrations')};import glob,os;[print(os.path.basename(os.path.dirname(d)), hashlib.sha256(open(d,'rb').read()).hexdigest()==stored.get(os.path.basename(os.path.dirname(d)))) for d in sorted(glob.glob('prisma/migrations/*/migration.sql'))]"
+  ```
+  Uma linha em branco a mais no `migration.sql` basta para o checksum divergir. Correção correta: remover a diferença e devolver o arquivo ao sha256 original (nenhum dado é perdido) — não usar `migrate reset` sem antes confirmar que a diferença é de whitespace.
 
 ### Testando manualmente com [`test.http`](test.http)
 

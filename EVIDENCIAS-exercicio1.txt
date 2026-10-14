@@ -1,0 +1,44 @@
+EVIDENCIAS - Exercicio 1 da Aula 04 (Comment, Like, UserProfile, Image)
+data: 2026-10-13 22:33:34 -03
+
+== npx prisma migrate status ==
+Datasource "db": SQLite database "dev.db" at "file:./dev.db"
+
+4 migrations found in prisma/migrations
+
+Database schema is up to date!
+
+== npm test ==
+
+ Test Files  3 passed (3)
+      Tests  25 passed (25)
+   Start at  22:33:36
+   Duration  4.04s (transform 101ms, setup 0ms, import 538ms, tests 1.22s, environment 1ms)
+
+
+== inspecao do dev.db ==
+tabelas: Address Comment Follow Image Like Post Tag User UserProfile _PostToTag _prisma_migrations sqlite_sequence
+migrations aplicadas: 4
+FKs de Like: commentId->Comment postId->Post userId->User
+CHECK em Like: true
+Comment: 3 linhas
+Like: 3 linhas
+UserProfile: 3 linhas
+Image: 3 linhas
+
+== DDL da tabela Like (com o CHECK) ==
+CREATE TABLE "Like" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "userId" INTEGER NOT NULL,
+    "postId" INTEGER,
+    "commentId" INTEGER,
+    CONSTRAINT "Like_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "Like_postId_fkey" FOREIGN KEY ("postId") REFERENCES "Post" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "Like_commentId_fkey" FOREIGN KEY ("commentId") REFERENCES "Comment" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    -- Regra que o schema Prisma não expressa: um like tem EXATAMENTE um alvo
+    -- (post OU comentário, nunca os dois nem nenhum). SQLite aceita CHECK;
+    -- NULLs em índice único são distintos, então os dois @@unique acima
+    -- continuam valendo por alvo separadamente.
+    CONSTRAINT "Like_one_target" CHECK (("postId" IS NOT NULL) + ("commentId" IS NOT NULL) = 1)
+)
