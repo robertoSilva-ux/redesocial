@@ -7,8 +7,16 @@ export function createTestPrismaClient(): PrismaClient {
   return new PrismaClient({ adapter });
 }
 
+// Ordem obrigatória: filhos antes dos pais. Apagar um `User` antes das tabelas
+// que o referenciam viola FK; `Comment` tem FK para `Post`, e `Image`/`Like`
+// para `Post`, `Comment` e `User`.
 export async function resetDatabase(prisma: PrismaClient): Promise<void> {
+  await prisma.like.deleteMany();
+  await prisma.comment.deleteMany();
+  await prisma.image.deleteMany();
+  await prisma.userProfile.deleteMany();
   await prisma.follow.deleteMany();
+  await prisma.address.deleteMany();
   await prisma.post.deleteMany();
   await prisma.tag.deleteMany();
   await prisma.user.deleteMany();
