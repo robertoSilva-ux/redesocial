@@ -8,12 +8,14 @@ datasource db {
 
 // 1:N — um autor tem muitos posts.
 model User {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String   @unique
-  createdAt DateTime @default(now())
-
-  avatarUrl String?
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  // Nunca a senha em texto puro — só o hash gerado pelo bcrypt
+  // (ver src/auth/passwords.ts). Mesmo um vazamento do banco não expõe a senha.
+  passwordHash String
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
 
   posts Post[]
 
@@ -23,9 +25,7 @@ model User {
   following Follow[] @relation("follower")
   followers Follow[] @relation("following")
 
-  // um usuario pode cadastrar multiplos endereços
-  addresses Address[]
-
+  // ---- do Exercício 1 (Aula 04), mantidos sobre o schema da Aula 05 ----
   // 1:1 — um perfil por usuário (o @unique no FK é o que garante o "1").
   profile UserProfile?
 
@@ -33,21 +33,8 @@ model User {
   comments Comment[]
   likes    Like[]
   images   Image[]
-
-  // @@map("usuarios")  -- renomear a table
-} 
-
-model Address {
-  id      Int    @id @default(autoincrement())
-  street  String
-  city    String
-  state   String
-  zipCode String
-
-  userId Int
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
-//tabela de junção explicita para a relação N:N entre User e User
+
 model Follow {
   followerId  Int
   followingId Int
@@ -62,6 +49,9 @@ model Follow {
 model Post {
   id        Int      @id @default(autoincrement())
   content   String
+  // URL pública do arquivo no S3 (ou no storage local, em dev) — o binário
+  // da imagem nunca é salvo no banco, só o endereço dele. Ver src/uploads/.
+  imageUrl  String?
   createdAt DateTime @default(now())
 
   authorId Int
@@ -70,6 +60,7 @@ model Post {
   // N:N implícita — o Prisma cria e gerencia a tabela de junção sozinho.
   tags Tag[]
 
+  // ---- do Exercício 1 (Aula 04) ----
   comments Comment[]
   likes    Like[]
   images   Image[]
@@ -80,6 +71,12 @@ model Tag {
   name  String @unique
   posts Post[]
 }
+
+// =====================================================================
+// Exercício 1 da Aula 04, restaurado sobre o `init` da Aula 05.
+// A migration 20261014013133_add_comment_like_userprofile_image já cria
+// estas tabelas (com o CHECK de alvo exclusivo do Like escrito à mão).
+// =====================================================================
 
 // Comentário em um post. Além das duas relações obrigatórias (autor e post),
 // tem autorrelação 1:N opcional: um comentário pode ser resposta de outro.

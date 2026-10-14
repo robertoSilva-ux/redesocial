@@ -7,7 +7,10 @@ import type { UserProfileController } from './profiles/UserProfileController.js'
 import type { ImageController } from './images/ImageController.js';
 import { asyncHandler } from './shared/http.js';
 
-export interface Controllers {
+// API JSON só de LEITURA (montada em /api pelo server.ts). Escritas
+// (criar usuário, seguir, criar post) migraram para src/webRoutes.ts,
+// porque agora dependem de quem está logado (sessão) — ver Aula05/aula05.md.
+export interface ApiControllers {
   user: UserController;
   post: PostController;
   comment: CommentController;
@@ -16,58 +19,50 @@ export interface Controllers {
   image: ImageController;
 }
 
-export function createRoutes(controllers: Controllers): Router {
+export function createRoutes(controllers: ApiControllers): Router {
   const router = Router();
   const { user, post, comment, like, profile, image } = controllers;
 
-  // ---------------------------------------------------------------- escrita
-
-  router.post(
-    '/users',
-    asyncHandler(async (req, res) => {
-      const created = await user.create(req.body);
-      res.status(201).json(created);
-    }),
-  );
-
-  router.post(
-    '/users/:id/follow',
-    asyncHandler(async (req, res) => {
-      await user.follow(Number(req.params.id), req.body);
-      res.status(204).send();
-    }),
-  );
-
-  router.post(
-    '/posts',
-    asyncHandler(async (req, res) => {
-      const created = await post.create(req.body);
-      res.status(201).json(created);
-    }),
-  );
-
-  // --------------------------------------------------------------- leitura 1
+  // ------------------------------------------------- leitura de um recurso
 
   router.get(
     '/users/:id',
     asyncHandler(async (req, res) => {
-      res.json(await user.get(Number(req.params.id)));
+      const found = await user.get(Number(req.params.id));
+      res.json(found);
+    }),
+  );
+
+  router.get(
+    '/users/:id/feed',
+    asyncHandler(async (req, res) => {
+      const feed = await user.feed(Number(req.params.id));
+      res.json(feed);
     }),
   );
 
   router.get(
     '/posts/:id',
     asyncHandler(async (req, res) => {
-      res.json(await post.get(Number(req.params.id)));
+      const found = await post.get(Number(req.params.id));
+      res.json(found);
     }),
   );
 
-  // ------------------------------------------------------------- listagens
-  // Todas devolvem o mesmo envelope:
-  //   { data: [...], meta: { page, pageSize, total, totalPages, hasNext, sort, order } }
-  // e aceitam ?page=&pageSize=&sort=&order= (ver src/shared/pagination.ts).
-  // ATENÇÃO à ordem: `/posts` precisa vir antes de `/posts/:id` para não ser
-  // capturado como id.
+  router.get(
+    '/tags/:name/posts',
+    asyncHandler(async (req, res) => {
+      const posts = await post.listByTag(req.params.name);
+      res.json(posts);
+    }),
+  );
+
+  // ---------------------------------- listagens paginadas (Exercício 2)
+  // Envelope comum: { data: [...], meta: { page, pageSize, total,
+  // totalPages, hasNext, sort, order } } — ver src/shared/pagination.ts.
+  // ATENÇÃO à ordem: `/posts` precisa vir depois de `/posts/:id`? Não —
+  // Express casa rota exata antes de parâmetro, mas manter /posts antes
+  // evita surpresa se alguém trocar por um curinga.
 
   router.get(
     '/posts',
@@ -101,20 +96,6 @@ export function createRoutes(controllers: Controllers): Router {
     '/images',
     asyncHandler(async (req, res) => {
       res.json(await image.list(req.query));
-    }),
-  );
-
-  router.get(
-    '/users/:id/feed',
-    asyncHandler(async (req, res) => {
-      res.json(await user.feed(Number(req.params.id), req.query));
-    }),
-  );
-
-  router.get(
-    '/tags/:name/posts',
-    asyncHandler(async (req, res) => {
-      res.json(await post.listByTag(req.params.name, req.query));
     }),
   );
 

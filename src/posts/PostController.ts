@@ -5,19 +5,17 @@ import { buildOrderBy, buildPage, parsePagination, SORTABLE_FIELDS } from '../sh
 export class PostController {
   constructor(private readonly prisma: PrismaClient) {}
 
+  // `authorId` vem da SESSÃO (ver src/webRoutes.ts), nunca do corpo da
+  // requisição: é a autorização "você só pode postar como você mesmo" em
+  // código — antes da Aula 05 (sem login), qualquer chamador podia mandar
+  // qualquer `authorId` no body.
+  //
   // 1:N (author) + N:N (tags) na mesma escrita: `connect` liga o post a um
   // autor existente, `connectOrCreate` reaproveita tags já cadastradas ou
   // cria as que ainda não existem — tudo em uma única operação do Prisma.
-  async create(body: unknown) {
-    const { authorId, content, tags } = (body ?? {}) as {
-      authorId?: unknown;
-      content?: unknown;
-      tags?: unknown;
-    };
+  async create(authorId: number, body: unknown, imageUrl?: string) {
+    const { content, tags } = (body ?? {}) as { content?: unknown; tags?: unknown };
 
-    if (typeof authorId !== 'number' || !Number.isInteger(authorId)) {
-      throw new ValidationError('"authorId" é obrigatório e deve ser um número inteiro');
-    }
     if (typeof content !== 'string' || content.trim().length === 0) {
       throw new ValidationError('"content" é obrigatório');
     }
@@ -35,6 +33,7 @@ export class PostController {
     return this.prisma.post.create({
       data: {
         content,
+        imageUrl,
         author: { connect: { id: authorId } },
         tags: {
           connectOrCreate: tagNames.map((name) => ({
@@ -50,11 +49,7 @@ export class PostController {
   async get(id: number) {
     const post = await this.prisma.post.findUnique({
       where: { id },
-      // inclui dados do author e das tags
-      include: { author: {
-        select: { name: true, avatarUrl: true }
-        // omit: {email: true, createdAt: true}
-      }, tags: true },
+      include: { author: true, tags: true },
     });
     if (!post) {
       throw new PostNotFoundError(id);
@@ -62,7 +57,19 @@ export class PostController {
     return post;
   }
 
-  // Listagem global paginada: GET /posts?page=&pageSize=&sort=&order=
+  async listByTag(name: string) {
+    const tag = await this.prisma.tag.findUnique({
+      where: { name },
+      include: { posts: { include: { author: true }, orderBy: { createdAt: 'desc' } } },
+    });
+    if (!tag) {
+      throw new TagNotFoundError(name);
+    }
+    return tag.posts;
+  }
+
+  // Listagem global paginada e ordenável (Exercício 2 da Aula 04, mantida
+  // na API JSON): GET /api/posts?page=&pageSize=&sort=&order=
   async list(query: unknown) {
     const page = parsePagination(query, { sortable: SORTABLE_FIELDS.post });
 
@@ -71,6 +78,7 @@ export class PostController {
         include: {
           author: { select: { id: true, name: true, avatarUrl: true } },
           tags: true,
+          images: true,
           _count: { select: { comments: true, likes: true } },
         },
         orderBy: buildOrderBy(page),
@@ -83,30 +91,10 @@ export class PostController {
     return buildPage(posts, total, page);
   }
 
-  async listByTag(name: string, query: unknown) {
-    const page = parsePagination(query, { sortable: SORTABLE_FIELDS.post });
-
-    const tag = await this.prisma.tag.findUnique({ where: { name } });
-    if (!tag) {
-      throw new TagNotFoundError(name);
-    }
-
-    // Filtra pela relação em vez de carregar `tag.posts` inteiro: assim o
-    // skip/take acontecem no banco (LIMIT/OFFSET), não na memória.
-    const where = { tags: { some: { name } } };
-
-    const [posts, total] = await Promise.all([
-      this.prisma.post.findMany({
-        where,
-        // include de multilpos niveis
-        include: { author: true, tags: true },
-        orderBy: buildOrderBy(page),
-        skip: page.skip,
-        take: page.take,
-      }),
-      this.prisma.post.count({ where }),
-    ]);
-
-    return buildPage(posts, total, page);
+  // A checagem "é dono do post?" já aconteceu no middleware
+  // `requireOwnPost` (src/auth/middleware.ts) antes desta rota ser
+  // chamada — aqui só falta apagar.
+  async remove(id: number): Promise<void> {
+    await this.prisma.post.delete({ where: { id } });
   }
 }

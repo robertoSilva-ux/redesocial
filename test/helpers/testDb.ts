@@ -16,7 +16,6 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   await prisma.image.deleteMany();
   await prisma.userProfile.deleteMany();
   await prisma.follow.deleteMany();
-  await prisma.address.deleteMany();
   await prisma.post.deleteMany();
   await prisma.tag.deleteMany();
   await prisma.user.deleteMany();

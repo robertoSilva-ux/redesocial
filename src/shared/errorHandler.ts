@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import {
   DuplicateEmailError,
   DuplicateFollowError,
+  InvalidCredentialsError,
   PostNotFoundError,
   SelfFollowError,
   TagNotFoundError,
@@ -12,6 +13,7 @@ import {
 const STATUS_BY_ERROR = new Map<Function, number>([
   [ValidationError, 400],
   [SelfFollowError, 400],
+  [InvalidCredentialsError, 401],
   [UserNotFoundError, 404],
   [PostNotFoundError, 404],
   [TagNotFoundError, 404],
@@ -38,21 +40,21 @@ function clientErrorStatus(err: Error): number | undefined {
 
 // Os 4 parâmetros são obrigatórios: é assim que o Express reconhece uma
 // função como error handler (em vez de um middleware comum).
-export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction): void {
+//
+// Este app mistura páginas (EJS, para navegador) e uma API JSON
+// (/api/..., para o REST Client) — o mesmo erro de domínio (ex.:
+// PostNotFoundError) precisa virar uma página de erro num caso e um JSON
+// no outro. `req.accepts` olha o header `Accept` da requisição para decidir.
+export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction): void {
   const knownStatus = STATUS_BY_ERROR.get(err.constructor);
-  if (knownStatus !== undefined) {
-    res.status(knownStatus).json({ error: err.message });
+  const status = knownStatus ?? clientErrorStatus(err) ?? 500;
+
+  const isParseFailure = (err as BodyParserError).type === 'entity.parse.failed';
+  const message = isParseFailure ? 'JSON inválido no corpo da requisição' : err.message;
+
+  if (req.accepts(['html', 'json']) === 'html') {
+    res.status(status).render('error', { status, message });
     return;
   }
-
-  const clientStatus = clientErrorStatus(err);
-  if (clientStatus !== undefined) {
-    const isParseFailure = (err as BodyParserError).type === 'entity.parse.failed';
-    res.status(clientStatus).json({
-      error: isParseFailure ? 'JSON inválido no corpo da requisição' : err.message,
-    });
-    return;
-  }
-
-  res.status(500).json({ error: err.message });
+  res.status(status).json({ error: message });
 }
