@@ -26,6 +26,14 @@ model User {
   // um usuario pode cadastrar multiplos endereços
   addresses Address[]
 
+  // 1:1 — um perfil por usuário (o @unique no FK é o que garante o "1").
+  profile UserProfile?
+
+  // 1:N — comentários e likes feitos por este usuário, imagens que ele subiu.
+  comments Comment[]
+  likes    Like[]
+  images   Image[]
+
   // @@map("usuarios")  -- renomear a table
 } 
 
@@ -61,10 +69,89 @@ model Post {
 
   // N:N implícita — o Prisma cria e gerencia a tabela de junção sozinho.
   tags Tag[]
+
+  comments Comment[]
+  likes    Like[]
+  images   Image[]
 }
 
 model Tag {
   id    Int    @id @default(autoincrement())
   name  String @unique
   posts Post[]
+}
+
+// Comentário em um post. Além das duas relações obrigatórias (autor e post),
+// tem autorrelação 1:N opcional: um comentário pode ser resposta de outro.
+model Comment {
+  id        Int      @id @default(autoincrement())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  authorId Int
+  author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  postId Int
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  parentId Int?
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[] @relation("CommentReplies")
+
+  likes Like[]
+}
+
+// Junção explícita com alvo exclusivo: um like aponta para UM post OU UM
+// comentário. Os dois @@unique impedem like repetido do mesmo usuário;
+// a regra "exatamente um alvo" é um CHECK acrescentado à mão na migration.
+model Like {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  postId Int?
+  post   Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  commentId Int?
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@unique([userId, commentId])
+}
+
+// 1:1 com User: o @unique em userId é a diferença entre 1:1 e 1:N.
+model UserProfile {
+  id          Int       @id @default(autoincrement())
+  displayName String?
+  bio         String?
+  location    String?
+  website     String?
+  birthDate   DateTime?
+  isPrivate   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Arquivo de imagem de um usuário, opcionalmente preso a um post.
+// Post apagado -> a imagem sobrevive com postId nulo (SetNull).
+model Image {
+  id        Int      @id @default(autoincrement())
+  url       String   @unique
+  altText   String?
+  mimeType  String?
+  width     Int?
+  height    Int?
+  createdAt DateTime @default(now())
+
+  ownerId Int
+  owner   User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  postId Int?
+  post   Post? @relation(fields: [postId], references: [id], onDelete: SetNull)
 }
