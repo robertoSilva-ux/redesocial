@@ -13,7 +13,9 @@ afterAll(async () => {
 });
 
 async function createUser(name: string, email: string) {
-  return prisma.user.create({ data: { name, email } });
+  // `passwordHash` é obrigatório desde a Aula 05 (login com bcrypt). Aqui um
+  // valor fixo basta: este arquivo testa o modelo, não autenticação.
+  return prisma.user.create({ data: { name, email, passwordHash: 'hash-de-teste' } });
 }
 
 describe('UserProfile (1:1 com User)', () => {
