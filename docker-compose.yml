@@ -1,0 +1,56 @@
+# Sobe a aplicação da Aula 05 em modo desenvolvimento:
+#
+#   docker compose up          # constrói (na primeira vez) e sobe em http://localhost:3003
+#   docker compose up --build  # força reconstruir a imagem (depois de mexer no package.json)
+#   docker compose down        # derruba
+#
+# O código é montado de fora (bind mount), então salvar um .ts reinicia o
+# servidor e salvar um .ejs já vale na próxima requisição — sem rebuild.
+
+services:
+  app:
+    build:
+      context: .
+      target: dev
+    image: aula05-rede-social:dev
+    container_name: aula05-rede-social
+
+    # As variáveis do .env local (DATABASE_URL, credenciais da AWS, etc.)
+    # entram no container. `required: false` = o projeto sobe mesmo sem .env.
+    env_file:
+      - path: .env
+        required: false
+
+    # O que está aqui tem precedência sobre o env_file — é o mínimo que a
+    # aplicação precisa para rodar dentro do container.
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      # Caminho absoluto dentro do container. O arquivo dev.db mora na pasta
+      # do projeto (bind mount), então o banco sobrevive a `docker compose down`
+      # e continua abrível pelo Prisma Studio na máquina host.
+      DATABASE_URL: file:/app/dev.db
+      SESSION_SECRET: ${SESSION_SECRET:-aula05-segredo-de-desenvolvimento}
+      # Refresh automático: bind mounts do macOS/Windows nem sempre entregam
+      # os eventos de alteração de arquivo (inotify) para dentro do container.
+      # Com polling, o watcher do `tsx` confere os arquivos de tempos em tempos:
+      # gasta um pouco mais de CPU, mas funciona em qualquer sistema. No Linux
+      # dá para desligar com CHOKIDAR_USEPOLLING=false no .env.
+      CHOKIDAR_USEPOLLING: "${CHOKIDAR_USEPOLLING:-true}"
+      CHOKIDAR_INTERVAL: "${CHOKIDAR_INTERVAL:-300}"
+
+    ports:
+      - "${PORT:-3003}:3003"
+
+    volumes:
+      # 1) O projeto inteiro, para o watch enxergar as alterações.
+      - .:/app
+      # 2) Volume anônimo por cima de node_modules: sem esta linha, o bind
+      #    mount acima cobriria o node_modules do container com o da máquina
+      #    host — que, no macOS/Windows, tem better-sqlite3 e bcrypt
+      #    compilados para o SO errado e quebra na hora de subir.
+      - /app/node_modules
+
+    # Ctrl+C encerra na hora e os logs saem coloridos.
+    stdin_open: true
+    tty: true

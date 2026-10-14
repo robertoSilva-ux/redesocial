@@ -35,3 +35,9 @@ export class DuplicateEmailError extends Error {
 }
 
 export class ValidationError extends Error {}
+
+export class InvalidCredentialsError extends Error {
+  constructor() {
+    super('E-mail ou senha inválidos');
+  }
+}

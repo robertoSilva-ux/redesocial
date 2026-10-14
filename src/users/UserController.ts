@@ -1,43 +1,16 @@
 import type { PrismaClient } from '@prisma/client';
 import { Prisma } from '@prisma/client';
-import {
-  DuplicateEmailError,
-  DuplicateFollowError,
-  SelfFollowError,
-  UserNotFoundError,
-  ValidationError,
-} from '../shared/errors.js';
-import { buildOrderBy, buildPage, parsePagination, SORTABLE_FIELDS } from '../shared/pagination.js';
+import { DuplicateFollowError, SelfFollowError, UserNotFoundError, ValidationError } from '../shared/errors.js';
 
+// Criar usuário agora é responsabilidade só do AuthController#register
+// (precisa de senha/hash) — não existe mais um "criar usuário sem senha"
+// aqui, de propósito.
 export class UserController {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async create(body: unknown) {
-    const { name, email } = (body ?? {}) as { name?: unknown; email?: unknown };
-    if (typeof name !== 'string' || name.trim().length === 0) {
-      throw new ValidationError('"name" é obrigatório');
-    }
-    if (typeof email !== 'string' || email.trim().length === 0) {
-      throw new ValidationError('"email" é obrigatório');
-    }
-
-    try {
-      return await this.prisma.user.create({ data: { name, email } });
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new DuplicateEmailError(email);
-      }
-      throw err;
-    }
-  }
-
   async get(id: number) {
-    // FIND UNIQUE DO PRISMA
     const user = await this.prisma.user.findUnique({
-      where: { id },  // busca pelo id do usuário
-
-      // ALMA DO ORM
-      // permite buscar dados relacionados (posts, seguidores, seguindo) em uma única query
+      where: { id },
       include: {
         _count: { select: { posts: true, followers: true, following: true } },
       },
@@ -85,30 +58,30 @@ export class UserController {
   // Feed = posts de quem eu sigo. Mostra um filtro relacional aninhado:
   // "posts cujo autor tem, entre seus seguidores, um Follow onde eu sou o
   // follower" — sem precisar buscar a lista de ids manualmente antes.
-  async feed(userId: number, query: unknown) {
-    const page = parsePagination(query, { sortable: SORTABLE_FIELDS.post });
-
+  async feed(userId: number) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new UserNotFoundError(userId);
     }
 
-    // O FOLLOWER ID DE ALGUNS DOS SEGUIDORES DO AUTOR DO POST É O ID DO USUÁRIO LOGADO
-    // FEED SÃO OS POSTS DE TODOS QUE ESTOU SEGUINDO
-    // BUSCA AUTORES QUE ESTOU SEGUINDO
-    const where = { author: { followers: { some: { followerId: userId } } } };
+    return this.prisma.post.findMany({
+      where: { author: { followers: { some: { followerId: userId } } } },
+      include: { author: true, tags: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
 
-    const [posts, total] = await Promise.all([
-      this.prisma.post.findMany({
-        where,
-        include: { author: true, tags: true },
-        orderBy: buildOrderBy(page),
-        skip: page.skip,
-        take: page.take,
-      }),
-      this.prisma.post.count({ where }),
-    ]);
+  // Lista para a tela inicial sugerir quem seguir: todo mundo, exceto eu
+  // mesmo, marcando quem eu já sigo (`isFollowing`) para a view decidir
+  // entre mostrar o botão "Seguir" ou "Já segue".
+  async listOthers(currentUserId: number) {
+    const users = await this.prisma.user.findMany({
+      where: { id: { not: currentUserId } },
+      orderBy: { name: 'asc' },
+    });
+    const following = await this.prisma.follow.findMany({ where: { followerId: currentUserId } });
+    const followingIds = new Set(following.map((f) => f.followingId));
 
-    return buildPage(posts, total, page);
+    return users.map((user) => ({ ...user, isFollowing: followingIds.has(user.id) }));
   }
 }

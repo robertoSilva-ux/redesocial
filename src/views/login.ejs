@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aula 05 - Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-slate-100 min-h-screen flex items-center justify-center">
+    <main class="bg-white shadow rounded-lg p-8 w-full max-w-sm">
+      <h1 class="text-xl font-semibold text-slate-800 mb-1">Entrar</h1>
+      <p class="text-sm text-slate-500 mb-6">
+        Usuários semeados (<code>npm run prisma:seed</code>): ana@exemplo.com / bruno@exemplo.com / carla@exemplo.com,
+        senha <code>senha123</code>.
+      </p>
+
+      <% if (error) { %>
+        <p class="bg-red-50 text-red-700 text-sm rounded px-3 py-2 mb-4"><%= error %></p>
+      <% } %>
+
+      <form method="post" action="/login" class="flex flex-col gap-3">
+        <label class="text-sm text-slate-600">
+          E-mail
+          <input type="email" name="email" required class="mt-1 w-full border rounded px-3 py-2" />
+        </label>
+        <label class="text-sm text-slate-600">
+          Senha
+          <input type="password" name="password" required class="mt-1 w-full border rounded px-3 py-2" />
+        </label>
+        <button type="submit" class="bg-slate-800 text-white rounded px-3 py-2 mt-2 hover:bg-slate-700">
+          Entrar
+        </button>
+      </form>
+
+      <p class="text-sm text-slate-500 mt-4">
+        Não tem conta? <a href="/register" class="text-slate-800 underline">Cadastre-se</a>.
+      </p>
+    </main>
+  </body>
+</html>

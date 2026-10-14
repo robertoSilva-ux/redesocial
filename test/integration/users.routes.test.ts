@@ -3,9 +3,11 @@ import request from 'supertest';
 import type { PrismaClient } from '@prisma/client';
 import { createServer } from '../../src/server.js';
 import { createTestPrismaClient, resetDatabase } from '../helpers/testDb.js';
+import { FakeImageStorage } from '../helpers/fakeImageStorage.js';
+import { registerAndLogin } from '../helpers/auth.js';
 
 const prisma: PrismaClient = createTestPrismaClient();
-const app = createServer(prisma);
+const app = createServer(prisma, new FakeImageStorage());
 
 beforeEach(async () => {
   await resetDatabase(prisma);
@@ -15,105 +17,101 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe('POST /users', () => {
-  it('cria um usuário', async () => {
-    const res = await request(app).post('/users').send({ name: 'Ana', email: 'ana@exemplo.com' });
-
-    expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ name: 'Ana', email: 'ana@exemplo.com' });
-  });
-
-  it('rejeita nome ausente', async () => {
-    const res = await request(app).post('/users').send({ email: 'ana@exemplo.com' });
-
-    expect(res.status).toBe(400);
-  });
-
-  it('rejeita e-mail duplicado', async () => {
-    await request(app).post('/users').send({ name: 'Ana', email: 'ana@exemplo.com' });
-    const res = await request(app).post('/users').send({ name: 'Outra Ana', email: 'ana@exemplo.com' });
-
-    expect(res.status).toBe(409);
-  });
-});
-
-describe('GET /users/:id', () => {
+describe('GET /api/users/:id', () => {
   it('retorna 404 para usuário inexistente', async () => {
-    const res = await request(app).get('/users/999');
+    const res = await request(app).get('/api/users/999');
 
     expect(res.status).toBe(404);
   });
 
-  it('retorna o usuário com contagem de posts, seguidores e seguindo', async () => {
-    const created = await request(app).post('/users').send({ name: 'Ana', email: 'ana@exemplo.com' });
+  it('retorna o usuário com contagem de posts/seguidores/seguindo', async () => {
+    const { userId } = await registerAndLogin(app, prisma, 'ana@exemplo.com', 'Ana');
 
-    const res = await request(app).get(`/users/${created.body.id}`);
+    const res = await request(app).get(`/api/users/${userId}`);
 
     expect(res.status).toBe(200);
     expect(res.body._count).toEqual({ posts: 0, followers: 0, following: 0 });
   });
 });
 
-describe('POST /users/:id/follow (autorrelação N:N)', () => {
-  async function createUser(name: string, email: string) {
-    const res = await request(app).post('/users').send({ name, email });
-    return res.body as { id: number };
-  }
+describe('POST /follow (autorrelação N:N, follower vem da sessão)', () => {
+  it('rejeita quem não está logado', async () => {
+    const bruno = await registerAndLogin(app, prisma, 'bruno@exemplo.com', 'Bruno');
 
-  it('permite um usuário seguir outro', async () => {
-    const ana = await createUser('Ana', 'ana@exemplo.com');
-    const bruno = await createUser('Bruno', 'bruno@exemplo.com');
+    const res = await request(app).post('/follow').type('form').send({ targetId: bruno.userId });
 
-    const res = await request(app).post(`/users/${ana.id}/follow`).send({ targetId: bruno.id });
-
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/login');
   });
 
-  it('rejeita seguir a si mesmo', async () => {
-    const ana = await createUser('Ana', 'ana@exemplo.com');
+  it('permite seguir outro usuário', async () => {
+    const bruno = await registerAndLogin(app, prisma, 'bruno@exemplo.com', 'Bruno');
+    const ana = await registerAndLogin(app, prisma, 'ana@exemplo.com', 'Ana');
 
-    const res = await request(app).post(`/users/${ana.id}/follow`).send({ targetId: ana.id });
+    const res = await ana.agent.post('/follow').type('form').send({ targetId: bruno.userId });
+
+    expect(res.status).toBe(302);
+    const follow = await prisma.follow.findUnique({
+      where: { followerId_followingId: { followerId: ana.userId, followingId: bruno.userId } },
+    });
+    expect(follow).not.toBeNull();
+  });
+
+  it('rejeita seguir a si mesmo — não é possível forjar outro followerId pelo corpo', async () => {
+    const ana = await registerAndLogin(app, prisma, 'ana@exemplo.com', 'Ana');
+
+    const res = await ana.agent.post('/follow').type('form').send({ targetId: ana.userId });
 
     expect(res.status).toBe(400);
   });
 
   it('rejeita seguir o mesmo usuário duas vezes', async () => {
-    const ana = await createUser('Ana', 'ana@exemplo.com');
-    const bruno = await createUser('Bruno', 'bruno@exemplo.com');
-    await request(app).post(`/users/${ana.id}/follow`).send({ targetId: bruno.id });
+    const bruno = await registerAndLogin(app, prisma, 'bruno@exemplo.com', 'Bruno');
+    const ana = await registerAndLogin(app, prisma, 'ana@exemplo.com', 'Ana');
+    await ana.agent.post('/follow').type('form').send({ targetId: bruno.userId });
 
-    const res = await request(app).post(`/users/${ana.id}/follow`).send({ targetId: bruno.id });
+    const res = await ana.agent.post('/follow').type('form').send({ targetId: bruno.userId });
 
     expect(res.status).toBe(409);
   });
 
   it('rejeita seguir usuário inexistente', async () => {
-    const ana = await createUser('Ana', 'ana@exemplo.com');
+    const ana = await registerAndLogin(app, prisma, 'ana@exemplo.com', 'Ana');
 
-    const res = await request(app).post(`/users/${ana.id}/follow`).send({ targetId: 999 });
+    const res = await ana.agent.post('/follow').type('form').send({ targetId: 999 });
 
     expect(res.status).toBe(404);
   });
 });
 
-describe('GET /users/:id/feed', () => {
+describe('GET /api/users/:id/feed', () => {
   it('retorna apenas posts de quem o usuário segue', async () => {
-    const anaRes = await request(app).post('/users').send({ name: 'Ana', email: 'ana@exemplo.com' });
-    const brunoRes = await request(app).post('/users').send({ name: 'Bruno', email: 'bruno@exemplo.com' });
-    const carlaRes = await request(app).post('/users').send({ name: 'Carla', email: 'carla@exemplo.com' });
-    const ana = anaRes.body as { id: number };
-    const bruno = brunoRes.body as { id: number };
-    const carla = carlaRes.body as { id: number };
+    const ana = await registerAndLogin(app, prisma, 'ana@exemplo.com', 'Ana');
+    const bruno = await registerAndLogin(app, prisma, 'bruno@exemplo.com', 'Bruno');
+    const carla = await registerAndLogin(app, prisma, 'carla@exemplo.com', 'Carla');
 
-    await request(app).post(`/users/${ana.id}/follow`).send({ targetId: bruno.id });
-    await request(app).post('/posts').send({ authorId: bruno.id, content: 'Post do Bruno' });
-    await request(app).post('/posts').send({ authorId: carla.id, content: 'Post da Carla' });
+    await ana.agent.post('/follow').type('form').send({ targetId: bruno.userId });
+    await bruno.agent.post('/posts').type('form').send({ content: 'Post do Bruno' });
+    await carla.agent.post('/posts').type('form').send({ content: 'Post da Carla' });
 
-    const res = await request(app).get(`/users/${ana.id}/feed`);
+    const res = await request(app).get(`/api/users/${ana.userId}/feed`);
 
     expect(res.status).toBe(200);
-    expect(res.body.data).toHaveLength(1);
-    expect(res.body.data[0].content).toBe('Post do Bruno');
-    expect(res.body.meta.total).toBe(1);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].content).toBe('Post do Bruno');
+  });
+});
+
+describe('GET / — feed renderizado + sugestões de quem seguir', () => {
+  it('lista outros usuários com isFollowing correto', async () => {
+    const ana = await registerAndLogin(app, prisma, 'ana@exemplo.com', 'Ana');
+    const bruno = await registerAndLogin(app, prisma, 'bruno@exemplo.com', 'Bruno');
+    await ana.agent.post('/follow').type('form').send({ targetId: bruno.userId });
+
+    const res = await ana.agent.get('/');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Bruno');
+    expect(res.text).toContain('Já segue');
   });
 });

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aula 05 - Post</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-slate-100 min-h-screen">
+    <%# ATIVIDADE: esta view ainda não tem rota. Ela espera receber `currentUser` e `post`
+        (com author, tags, comments e as contagens). Ver Aula05/atividade-likes-comentarios.md %>
+    <% const comments = post.comments ?? []; %>
+    <% const likeCount = post._count?.likes ?? 0; %>
+    <% const likedByMe = post.likedByMe ?? false; %>
+
+    <header class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+      <h1 class="text-lg font-semibold">Post de <%= post.author.name %></h1>
+      <a href="/" class="text-slate-300 text-sm hover:text-white">&larr; Voltar para o feed</a>
+    </header>
+
+    <main class="max-w-2xl mx-auto mt-8 px-4 flex flex-col gap-4">
+      <article class="bg-white rounded-lg shadow p-4">
+        <header class="flex items-center justify-between">
+          <p class="text-sm font-medium text-slate-800"><%= post.author.name %></p>
+          <p class="text-xs text-slate-400"><%= new Date(post.createdAt).toLocaleString('pt-BR') %></p>
+        </header>
+        <p class="text-slate-700 mt-2"><%= post.content %></p>
+        <% if (post.imageUrl) { %>
+          <img src="<%= post.imageUrl %>" alt="" class="mt-3 rounded-lg w-full object-cover" />
+        <% } %>
+        <% if (post.tags.length > 0) { %>
+          <div class="flex gap-2 mt-3 flex-wrap">
+            <% post.tags.forEach((tag) => { %>
+              <span class="text-xs bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">#<%= tag.name %></span>
+            <% }) %>
+          </div>
+        <% } %>
+        <footer class="flex items-center gap-4 mt-3 pt-3 border-t border-slate-100">
+          <form method="post" action="/posts/<%= post.id %>/like">
+            <button
+              type="submit"
+              title="Curtir"
+              class="flex items-center gap-1.5 text-sm <%= likedByMe ? 'text-rose-600' : 'text-slate-500' %> hover:text-rose-600"
+            >
+              <svg viewBox="0 0 24 24" class="w-5 h-5" fill="<%= likedByMe ? 'currentColor' : 'none' %>" stroke="currentColor" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+              </svg>
+              <span><%= likeCount %></span>
+            </button>
+          </form>
+          <span class="flex items-center gap-1.5 text-sm text-slate-500">
+            <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 9.75h6.75m-6.75 3h4.5M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25-9 3.694-9 8.25c0 1.6.497 3.096 1.356 4.36.1.148.14.33.107.507l-.713 3.133 3.94-1.02c.16-.042.33-.02.48.043 1.15.49 2.45.767 3.83.767Z" />
+            </svg>
+            <span><%= comments.length %></span>
+          </span>
+          <% if (post.authorId === currentUser.id) { %>
+            <form method="post" action="/posts/<%= post.id %>/delete" class="ml-auto">
+              <button type="submit" class="text-xs text-red-600 hover:underline">Apagar</button>
+            </form>
+          <% } %>
+        </footer>
+      </article>
+
+      <section class="bg-white rounded-lg shadow p-4">
+        <h2 class="text-slate-500 text-sm font-medium uppercase tracking-wide">Comentários</h2>
+
+        <%# ATIVIDADE: este form ainda não tem rota no backend %>
+        <form method="post" action="/posts/<%= post.id %>/comments" class="flex flex-col gap-2 mt-3">
+          <% if (typeof error !== 'undefined' && error) { %>
+            <p class="bg-red-50 text-red-700 text-sm rounded px-3 py-2"><%= error %></p>
+          <% } %>
+          <textarea
+            name="content"
+            required
+            rows="2"
+            placeholder="Escreva um comentário..."
+            class="w-full border rounded px-3 py-2 text-sm"
+          ></textarea>
+          <button type="submit" class="self-end bg-slate-800 text-white text-sm rounded px-3 py-1.5 hover:bg-slate-700">
+            Comentar
+          </button>
+        </form>
+
+        <div class="divide-y mt-2">
+          <% if (comments.length === 0) { %>
+            <p class="text-sm text-slate-500 py-3">Nenhum comentário ainda. Seja o primeiro.</p>
+          <% } %>
+          <% comments.forEach((comment) => { %>
+            <div class="py-3">
+              <div class="flex items-center justify-between">
+                <p class="text-sm font-medium text-slate-800"><%= comment.author.name %></p>
+                <p class="text-xs text-slate-400"><%= new Date(comment.createdAt).toLocaleString('pt-BR') %></p>
+              </div>
+              <p class="text-sm text-slate-700 mt-1"><%= comment.content %></p>
+            </div>
+          <% }) %>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

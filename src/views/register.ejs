@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aula 05 - Cadastro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-slate-100 min-h-screen flex items-center justify-center">
+    <main class="bg-white shadow rounded-lg p-8 w-full max-w-sm">
+      <h1 class="text-xl font-semibold text-slate-800 mb-6">Criar conta</h1>
+
+      <% if (error) { %>
+        <p class="bg-red-50 text-red-700 text-sm rounded px-3 py-2 mb-4"><%= error %></p>
+      <% } %>
+
+      <!-- enctype="multipart/form-data" é obrigatório para o campo de
+           arquivo (avatar) chegar no servidor — sem isso, o navegador só
+           manda o nome do arquivo como texto, não o conteúdo. É esse
+           enctype que o Multer (upload.single('avatar')) sabe processar. -->
+      <form method="post" action="/register" enctype="multipart/form-data" class="flex flex-col gap-3">
+        <label class="text-sm text-slate-600">
+          Nome
+          <input type="text" name="name" required class="mt-1 w-full border rounded px-3 py-2" />
+        </label>
+        <label class="text-sm text-slate-600">
+          E-mail
+          <input type="email" name="email" required class="mt-1 w-full border rounded px-3 py-2" />
+        </label>
+        <label class="text-sm text-slate-600">
+          Senha (mín. 6 caracteres)
+          <input type="password" name="password" required minlength="6" class="mt-1 w-full border rounded px-3 py-2" />
+        </label>
+        <label class="text-sm text-slate-600">
+          Avatar (opcional)
+          <input type="file" name="avatar" accept="image/jpeg,image/png,image/webp" class="mt-1 w-full text-sm" />
+        </label>
+        <button type="submit" class="bg-slate-800 text-white rounded px-3 py-2 mt-2 hover:bg-slate-700">
+          Criar conta
+        </button>
+      </form>
+
+      <p class="text-sm text-slate-500 mt-4">
+        Já tem conta? <a href="/login" class="text-slate-800 underline">Entrar</a>.
+      </p>
+    </main>
+  </body>
+</html>

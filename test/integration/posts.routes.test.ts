@@ -3,87 +3,136 @@ import request from 'supertest';
 import type { PrismaClient } from '@prisma/client';
 import { createServer } from '../../src/server.js';
 import { createTestPrismaClient, resetDatabase } from '../helpers/testDb.js';
+import { FakeImageStorage } from '../helpers/fakeImageStorage.js';
+import { registerAndLogin } from '../helpers/auth.js';
 
 const prisma: PrismaClient = createTestPrismaClient();
-const app = createServer(prisma);
+let imageStorage: FakeImageStorage;
+let app: ReturnType<typeof createServer>;
 
 beforeEach(async () => {
   await resetDatabase(prisma);
+  imageStorage = new FakeImageStorage();
+  app = createServer(prisma, imageStorage);
 });
 
 afterAll(async () => {
   await prisma.$disconnect();
 });
 
-async function createUser(name: string, email: string) {
-  const res = await request(app).post('/users').send({ name, email });
-  return res.body as { id: number };
-}
+describe('POST /posts (autenticado)', () => {
+  it('rejeita quem não está logado', async () => {
+    const res = await request(app).post('/posts').type('form').send({ content: 'Sem sessão' });
 
-describe('POST /posts', () => {
-  it('cria um post com autor (1:N) e tags (N:N)', async () => {
-    const author = await createUser('Ana', 'ana@exemplo.com');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/login');
+  });
 
-    const res = await request(app)
+  it('cria um post com o autor vindo da sessão, não do corpo (autorização)', async () => {
+    const { agent, userId } = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+
+    const res = await agent.post('/posts').type('form').send({ content: 'Olá, Prisma!', tags: 'prisma, orm' });
+
+    expect(res.status).toBe(302);
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Olá, Prisma!' }, include: { tags: true } });
+    expect(post.authorId).toBe(userId);
+    expect(post.tags.map((t) => t.name).sort()).toEqual(['orm', 'prisma']);
+  });
+
+  it('faz upload da imagem via ImageStorage e salva a URL retornada no post', async () => {
+    const { agent } = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+
+    const res = await agent
       .post('/posts')
-      .send({ authorId: author.id, content: 'Olá, Prisma!', tags: ['prisma', 'orm'] });
+      .field('content', 'Post com foto')
+      .attach('image', Buffer.from('fake-image-bytes'), { filename: 'foto.png', contentType: 'image/png' });
 
-    expect(res.status).toBe(201);
-    expect(res.body.content).toBe('Olá, Prisma!');
-    expect(res.body.author.id).toBe(author.id);
-    expect(res.body.tags.map((t: { name: string }) => t.name).sort()).toEqual(['orm', 'prisma']);
+    expect(res.status).toBe(302);
+    expect(imageStorage.uploads).toHaveLength(1);
+    expect(imageStorage.uploads[0].originalname).toBe('foto.png');
+
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post com foto' } });
+    expect(post.imageUrl).toBe('https://fake-bucket.test/foto.png');
   });
 
-  it('reaproveita uma tag já existente em vez de duplicá-la', async () => {
-    const author = await createUser('Ana', 'ana@exemplo.com');
-    await request(app).post('/posts').send({ authorId: author.id, content: 'Post 1', tags: ['prisma'] });
+  it('rejeita um arquivo que não é imagem (fileFilter do Multer)', async () => {
+    const { agent } = await registerAndLogin(app, prisma, 'ana@exemplo.com');
 
-    await request(app).post('/posts').send({ authorId: author.id, content: 'Post 2', tags: ['prisma'] });
+    const res = await agent
+      .post('/posts')
+      .field('content', 'Post com anexo inválido')
+      .attach('image', Buffer.from('não é imagem'), { filename: 'arquivo.txt', contentType: 'text/plain' });
 
-    const res = await request(app).get('/tags/prisma/posts');
-    expect(res.body.data).toHaveLength(2);
-    expect(res.body.meta.total).toBe(2);
-  });
-
-  it('rejeita post sem autor existente', async () => {
-    const res = await request(app).post('/posts').send({ authorId: 999, content: 'Post órfão' });
-
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(500);
+    expect(imageStorage.uploads).toHaveLength(0);
   });
 
   it('rejeita post sem conteúdo', async () => {
-    const author = await createUser('Ana', 'ana@exemplo.com');
+    const { agent } = await registerAndLogin(app, prisma, 'ana@exemplo.com');
 
-    const res = await request(app).post('/posts').send({ authorId: author.id, content: '' });
+    const res = await agent.post('/posts').type('form').send({ content: '' });
 
     expect(res.status).toBe(400);
   });
 });
 
-describe('GET /posts/:id', () => {
-  it('retorna 404 para post inexistente', async () => {
-    const res = await request(app).get('/posts/999');
+describe('POST /posts/:id/delete (autorização — dono do post)', () => {
+  it('o dono consegue apagar o próprio post', async () => {
+    const { agent } = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+    await agent.post('/posts').type('form').send({ content: 'Post da Ana' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post da Ana' } });
+
+    const res = await agent.post(`/posts/${post.id}/delete`);
+
+    expect(res.status).toBe(302);
+    await expect(prisma.post.findUnique({ where: { id: post.id } })).resolves.toBeNull();
+  });
+
+  it('outro usuário autenticado NÃO consegue apagar (403, não 404)', async () => {
+    const author = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post da Ana' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post da Ana' } });
+
+    const other = await registerAndLogin(app, prisma, 'bruno@exemplo.com');
+    const res = await other.agent.post(`/posts/${post.id}/delete`);
+
+    expect(res.status).toBe(403);
+    await expect(prisma.post.findUnique({ where: { id: post.id } })).resolves.not.toBeNull();
+  });
+
+  it('quem não está logado é redirecionado para /login', async () => {
+    const { agent } = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+    await agent.post('/posts').type('form').send({ content: 'Post da Ana' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post da Ana' } });
+
+    const res = await request(app).post(`/posts/${post.id}/delete`);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/login');
+  });
+});
+
+describe('API JSON de leitura (/api/...)', () => {
+  it('GET /api/posts/:id retorna 404 para post inexistente', async () => {
+    const res = await request(app).get('/api/posts/999');
 
     expect(res.status).toBe(404);
   });
 
-  it('retorna o post com autor e tags', async () => {
-    const author = await createUser('Ana', 'ana@exemplo.com');
-    const created = await request(app)
-      .post('/posts')
-      .send({ authorId: author.id, content: 'Olá, Prisma!', tags: ['prisma'] });
+  it('GET /api/posts/:id retorna o post com autor e tags', async () => {
+    const { agent } = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+    await agent.post('/posts').type('form').send({ content: 'Olá, Prisma!', tags: 'prisma' });
+    const created = await prisma.post.findFirstOrThrow({ where: { content: 'Olá, Prisma!' } });
 
-    const res = await request(app).get(`/posts/${created.body.id}`);
+    const res = await request(app).get(`/api/posts/${created.id}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.author.name).toBe('Ana');
+    expect(res.body.author.name).toBe('Usuária de teste');
     expect(res.body.tags[0].name).toBe('prisma');
   });
-});
 
-describe('GET /tags/:name/posts', () => {
-  it('retorna 404 para tag inexistente', async () => {
-    const res = await request(app).get('/tags/inexistente/posts');
+  it('GET /api/tags/:name/posts retorna 404 para tag inexistente', async () => {
+    const res = await request(app).get('/api/tags/inexistente/posts');
 
     expect(res.status).toBe(404);
   });

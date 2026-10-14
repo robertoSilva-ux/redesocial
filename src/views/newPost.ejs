@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aula 05 - Novo post</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-slate-100 min-h-screen">
+    <header class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+      <h1 class="text-lg font-semibold">Novo post</h1>
+      <a href="/" class="text-slate-300 text-sm hover:text-white">&larr; Voltar para o feed</a>
+    </header>
+
+    <main class="max-w-lg mx-auto mt-8">
+      <div class="bg-white shadow rounded-lg p-6">
+        <% if (error) { %>
+          <p class="bg-red-50 text-red-700 text-sm rounded px-3 py-2 mb-4"><%= error %></p>
+        <% } %>
+
+        <form method="post" action="/posts" enctype="multipart/form-data" class="flex flex-col gap-3">
+          <label class="text-sm text-slate-600">
+            Conteúdo
+            <textarea name="content" required rows="4" class="mt-1 w-full border rounded px-3 py-2"></textarea>
+          </label>
+          <label class="text-sm text-slate-600">
+            Tags (separadas por vírgula, opcional)
+            <input type="text" name="tags" placeholder="prisma, orm" class="mt-1 w-full border rounded px-3 py-2" />
+          </label>
+          <label class="text-sm text-slate-600">
+            Imagem (opcional)
+            <input type="file" name="image" accept="image/jpeg,image/png,image/webp" class="mt-1 w-full text-sm" />
+          </label>
+          <button type="submit" class="bg-slate-800 text-white rounded px-3 py-2 mt-2 hover:bg-slate-700">
+            Publicar
+          </button>
+        </form>
+      </div>
+    </main>
+  </body>
+</html>
