@@ -9,7 +9,7 @@ docs/
 ├── BACKLOG.md             especificação do Trabalho II em incrementos (E0..E7)
 ├── adr/                   Architecture Decision Records (um arquivo por decisão)
 │   ├── README.md          índice, convenção e template
-│   ├── 0001 ... 0008      decisões aceitas
+│   ├── 0001 ... 0009      decisões aceitas
 └── arquitetura/
     └── c4.md              diagramas C4: contexto (1), containers (2) e componentes (3)
 ```
@@ -66,8 +66,8 @@ Registradas aqui para não se perderem; viram ADR quando forem decididas.
 
 - **`Like` × `CommentLike`** — o enunciado nomeia duas tabelas; existe uma só, polimórfica
   (ADR-0002). Se a decisão for separar, o ADR-0002 é substituído.
-- **`PostImage`** — o enunciado nomeia a tabela; hoje existe `Image` (1:N com `Post`, com
-  `ownerId`, mime e `SetNull`). A escolha define a migração do item 4 do trabalho.
+- **`PostImage`** — decidido no ADR-0009: tabela própria, migrando `Post.imageUrl` com passo de
+  dados. `Image` continua sendo "arquivo do usuário" e `Image.postId` fica como legado do Exercício 1.
 - **Feed do scroll infinito**: fragmento HTML renderizado no servidor × JSON + template no
   cliente (ADR-0005 já registra que o cursor conviverá com `page/pageSize`).
 - **Ambiente**: resolvido no ADR-0008 (override global de `better-sqlite3` + lock regenerado).

@@ -52,7 +52,7 @@ describe('POST /posts com upload recusado', () => {
     const res = await agent
       .post('/posts')
       .field('content', 'post com arquivo grande')
-      .attach('image', grande, { filename: 'grande.png', contentType: 'image/png' });
+      .attach('images', grande, { filename: 'grande.png', contentType: 'image/png' });
 
     expect(res.status).toBe(413);
     expect(res.text).toMatch(/5 MB/);
@@ -61,13 +61,13 @@ describe('POST /posts com upload recusado', () => {
     expect(storage.uploads).toHaveLength(0);
   });
 
-  it('campo de arquivo inesperado → 400 (a rota aceita só "image")', async () => {
+  it('campo de arquivo inesperado → 400 (a rota aceita só "images")', async () => {
     const { agent } = await autenticado();
 
     const res = await agent
       .post('/posts')
       .field('content', 'post com campo errado')
-      .attach('images', PNG, { filename: 'foto.png', contentType: 'image/png' });
+      .attach('image', PNG, { filename: 'foto.png', contentType: 'image/png' });
 
     expect(res.status).toBe(400);
     expect(res.text).toMatch(/campo de arquivo/i);
@@ -81,7 +81,7 @@ describe('POST /posts com upload recusado', () => {
     const res = await agent
       .post('/posts')
       .field('content', 'post com txt')
-      .attach('image', Buffer.from('não sou imagem'), { filename: 'nota.txt', contentType: 'text/plain' });
+      .attach('images', Buffer.from('não sou imagem'), { filename: 'nota.txt', contentType: 'text/plain' });
 
     expect(res.status).toBe(400);
     expect(res.text).toMatch(/Formato de imagem não suportado/);
@@ -95,12 +95,16 @@ describe('POST /posts com upload recusado', () => {
     const res = await agent
       .post('/posts')
       .field('content', 'post com foto de verdade')
-      .attach('image', PNG, { filename: 'foto.png', contentType: 'image/png' });
+      .attach('images', PNG, { filename: 'foto.png', contentType: 'image/png' });
 
     expect(res.status).toBe(302);
     expect(storage.uploads).toHaveLength(1);
-    const post = await prisma.post.findFirstOrThrow({ where: { content: 'post com foto de verdade' } });
-    expect(post.imageUrl).toBe('https://fake-bucket.test/foto.png');
+    const post = await prisma.post.findFirstOrThrow({
+      where: { content: 'post com foto de verdade' },
+      include: { images: true },
+    });
+    expect(post.images).toHaveLength(1);
+    expect(post.images[0].url).toBe('https://fake-bucket.test/foto.png');
   });
 
   it('a mesma recusa em rota /api responde JSON, não página', async () => {
@@ -111,7 +115,7 @@ describe('POST /posts com upload recusado', () => {
       .post('/posts')
       .set('Accept', 'application/json')
       .field('content', 'post grande')
-      .attach('image', grande, { filename: 'grande.png', contentType: 'image/png' });
+      .attach('images', grande, { filename: 'grande.png', contentType: 'image/png' });
 
     expect(res.status).toBe(413);
     expect(res.headers['content-type']).toMatch(/json/);

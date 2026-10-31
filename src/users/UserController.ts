@@ -80,7 +80,7 @@ export class UserController {
       include: {
         author: { select: publicUserSelect },
         tags: true,
-        images: true,
+        images: { orderBy: { order: 'asc' } },
         _count: { select: { likes: true, comments: true } },
         // Os 3 primeiros comentários de cada post (`take` em relação aninhada
         // vale por post, não no total). O feed mostra a conversa começando;
@@ -89,7 +89,10 @@ export class UserController {
         comments: {
           take: 3,
           orderBy: { createdAt: 'asc' },
-          include: { author: { select: publicUserSelect } },
+          include: {
+            author: { select: publicUserSelect },
+            _count: { select: { likes: true } },
+          },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -101,7 +104,27 @@ export class UserController {
     });
     const likedPostIds = new Set(myLikes.map((like) => like.postId));
 
-    return posts.map((post) => ({ ...post, likedByMe: likedPostIds.has(post.id) }));
+    // Mesmo truque para os comentários do feed: UMA consulta para todos, em vez
+    // de um `findUnique` por comentário. Esta consulta é duplicada em
+    // `PostController.getForView` de propósito: módulos de feature não se
+    // importam entre si (ADR-0001) e a colaboração é pelo Prisma.
+    const commentIds = posts.flatMap((post) => post.comments.map((comment) => comment.id));
+    const myCommentLikes = commentIds.length
+      ? await this.prisma.like.findMany({
+          where: { userId, commentId: { in: commentIds } },
+          select: { commentId: true },
+        })
+      : [];
+    const likedCommentIds = new Set(myCommentLikes.map((like) => like.commentId));
+
+    return posts.map((post) => ({
+      ...post,
+      likedByMe: likedPostIds.has(post.id),
+      comments: post.comments.map((comment) => ({
+        ...comment,
+        likedByMe: likedCommentIds.has(comment.id),
+      })),
+    }));
   }
 
   // Lista para a tela inicial sugerir quem seguir: todo mundo, exceto eu

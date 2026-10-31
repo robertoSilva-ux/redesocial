@@ -39,20 +39,25 @@ describe('POST /posts (autenticado)', () => {
     expect(post.tags.map((t) => t.name).sort()).toEqual(['orm', 'prisma']);
   });
 
-  it('faz upload da imagem via ImageStorage e salva a URL retornada no post', async () => {
+  it('faz upload da imagem via ImageStorage e salva a URL retornada em PostImage', async () => {
     const { agent } = await registerAndLogin(app, prisma, 'ana@exemplo.com');
 
     const res = await agent
       .post('/posts')
       .field('content', 'Post com foto')
-      .attach('image', Buffer.from('fake-image-bytes'), { filename: 'foto.png', contentType: 'image/png' });
+      .attach('images', Buffer.from('fake-image-bytes'), { filename: 'foto.png', contentType: 'image/png' });
 
     expect(res.status).toBe(302);
     expect(imageStorage.uploads).toHaveLength(1);
     expect(imageStorage.uploads[0].originalname).toBe('foto.png');
 
-    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post com foto' } });
-    expect(post.imageUrl).toBe('https://fake-bucket.test/foto.png');
+    // `Post.imageUrl` não existe mais (ADR-0009): a foto é uma linha de PostImage.
+    const post = await prisma.post.findFirstOrThrow({
+      where: { content: 'Post com foto' },
+      include: { images: { orderBy: { order: 'asc' } } },
+    });
+    expect(post.images).toHaveLength(1);
+    expect(post.images[0]).toMatchObject({ url: 'https://fake-bucket.test/foto.png', order: 0 });
   });
 
   it('rejeita um arquivo que não é imagem (fileFilter do Multer)', async () => {
@@ -61,7 +66,7 @@ describe('POST /posts (autenticado)', () => {
     const res = await agent
       .post('/posts')
       .field('content', 'Post com anexo inválido')
-      .attach('image', Buffer.from('não é imagem'), { filename: 'arquivo.txt', contentType: 'text/plain' });
+      .attach('images', Buffer.from('não é imagem'), { filename: 'arquivo.txt', contentType: 'text/plain' });
 
     // Era 500 antes do E0c: o fileFilter lançava `Error` cru e o error handler
     // jogava no genérico. MIME não permitido é erro do cliente → 400.

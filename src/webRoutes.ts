@@ -4,7 +4,7 @@ import { AuthController } from './auth/AuthController.js';
 import { UserController } from './users/UserController.js';
 import { PostController } from './posts/PostController.js';
 import { requireAuth, requireOwnPost } from './auth/middleware.js';
-import { upload } from './uploads/upload.js';
+import { MAX_POST_IMAGES, upload } from './uploads/upload.js';
 import type { ImageStorage } from './uploads/storage.js';
 import { asyncHandler, parseIdParam } from './shared/http.js';
 import { DuplicateEmailError, InvalidCredentialsError, ValidationError } from './shared/errors.js';
@@ -114,21 +114,25 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
   router.post(
     '/posts',
     requireAuth, // middlware
-    upload.single('image'), // middleware
+    // Até 5 fotos por post. Cada arquivo passa pela MESMA `ImageStorage`
+    // (ADR-0007): `array` só muda quantos buffers chegam de uma vez.
+    upload.array('images', MAX_POST_IMAGES),
     asyncHandler(async (req, res) => {
       try {
-        let imageUrl: string | undefined;
-        // O parse do arquivo fica disponível em `req.file`. O binário vai
-        // direto do buffer para o `ImageStorage` — nunca é logado (o buffer
-        // inteiro no stdout foi um resquício de depuração, cartão E0c).
-        if (req.file) {
-          imageUrl = await imageStorage.upload(req.file);
+        // O parse dos arquivos fica em `req.files`. O binário vai direto do
+        // buffer para o `ImageStorage`, um `upload()` por arquivo — e é a
+        // ordem desse laço que define `PostImage.order`.
+        const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+        const imageUrls: string[] = [];
+        for (const file of files) {
+          imageUrls.push(await imageStorage.upload(file));
         }
+
         const tags = typeof req.body.tags === 'string'
           ? req.body.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
           : undefined;
 
-        await postController.create(req.session.userId!, { content: req.body.content, tags }, imageUrl);
+        await postController.create(req.session.userId!, { content: req.body.content, tags }, imageUrls);
         res.redirect('/');
       } catch (err) {
         if (err instanceof ValidationError) {

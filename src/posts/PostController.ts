@@ -14,7 +14,13 @@ export class PostController {
   // 1:N (author) + N:N (tags) na mesma escrita: `connect` liga o post a um
   // autor existente, `connectOrCreate` reaproveita tags já cadastradas ou
   // cria as que ainda não existem — tudo em uma única operação do Prisma.
-  async create(authorId: number, body: unknown, imageUrl?: string) {
+  /**
+   * Cria o post com as fotos já enviadas ao `ImageStorage` (uma URL por
+   * arquivo, na ordem em que chegaram). A ordem vira `PostImage.order` — a
+   * view lê ordenado por ela, então a sequência do upload é a sequência do
+   * carrossel (ADR-0009).
+   */
+  async create(authorId: number, body: unknown, imageUrls: string[] = []) {
     const { content, tags } = (body ?? {}) as { content?: unknown; tags?: unknown };
 
     if (typeof content !== 'string' || content.trim().length === 0) {
@@ -34,8 +40,10 @@ export class PostController {
     return this.prisma.post.create({
       data: {
         content,
-        imageUrl,
         author: { connect: { id: authorId } },
+        images: {
+          create: imageUrls.map((url, order) => ({ url, order })),
+        },
         tags: {
           connectOrCreate: tagNames.map((name) => ({
             where: { name },
@@ -50,7 +58,11 @@ export class PostController {
   async get(id: number) {
     const post = await this.prisma.post.findUnique({
       where: { id },
-      include: { author: { select: publicUserSelect }, tags: true },
+      include: {
+        author: { select: publicUserSelect },
+        tags: true,
+        images: { orderBy: { order: 'asc' } },
+      },
     });
     if (!post) {
       throw new PostNotFoundError(id);
@@ -73,10 +85,13 @@ export class PostController {
       include: {
         author: { select: publicUserSelect },
         tags: true,
-        images: true,
+        images: { orderBy: { order: 'asc' } },
         _count: { select: { likes: true, comments: true } },
         comments: {
-          include: { author: { select: publicUserSelect } },
+          include: {
+            author: { select: publicUserSelect },
+            _count: { select: { likes: true } },
+          },
           orderBy: { createdAt: 'asc' },
         },
       },
@@ -91,7 +106,21 @@ export class PostController {
       where: { userId_postId: { userId: currentUserId, postId: id } },
     });
 
-    return { ...post, likedByMe: mine !== null };
+    // E uma para os comentários deste post (a view mostra curtida em cada um).
+    const likedComments = await this.prisma.like.findMany({
+      where: { userId: currentUserId, commentId: { in: post.comments.map((c) => c.id) } },
+      select: { commentId: true },
+    });
+    const likedCommentIds = new Set(likedComments.map((like) => like.commentId));
+
+    return {
+      ...post,
+      likedByMe: mine !== null,
+      comments: post.comments.map((comment) => ({
+        ...comment,
+        likedByMe: likedCommentIds.has(comment.id),
+      })),
+    };
   }
 
   async listByTag(name: string) {
@@ -120,7 +149,7 @@ export class PostController {
         include: {
           author: { select: { id: true, name: true, avatarUrl: true } },
           tags: true,
-          images: true,
+          images: { orderBy: { order: 'asc' } },
           _count: { select: { comments: true, likes: true } },
         },
         orderBy: buildOrderBy(page),

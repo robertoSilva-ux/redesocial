@@ -55,6 +55,24 @@ async function main() {
     },
   });
 
+  // Post com DUAS fotos, para o feed e a página do post terem o que mostrar
+  // sem depender de upload manual. `placehold.co` gera a imagem na hora —
+  // nenhum binário entra no repositório (ADR-0007) e a URL funciona no
+  // navegador de qualquer máquina.
+  await prisma.post.create({
+    data: {
+      content: 'Duas fotos para testar a relação PostImage (item 4).',
+      author: { connect: { id: bruno.id } },
+      images: {
+        create: [
+          { url: 'https://placehold.co/600x400/png?text=foto+1', order: 0 },
+          { url: 'https://placehold.co/600x400/png?text=foto+2', order: 1 },
+        ],
+      },
+      tags: { connectOrCreate: [{ where: { name: 'orm' }, create: { name: 'orm' } }] },
+    },
+  });
+
   await prisma.post.create({
     data: {
       content: 'ORM não é mágica, é só uma camada.',
@@ -63,7 +81,7 @@ async function main() {
     },
   });
 
-  console.log(`Seed concluído: 3 usuários, 3 posts, 2 tags, 3 follows. Senha de todos: "${DEMO_PASSWORD}".`);
+  console.log(`Seed concluído: 3 usuários, 4 posts (um com 2 fotos), 2 tags, 3 follows. Senha de todos: "${DEMO_PASSWORD}".`);
 }
 
 main()

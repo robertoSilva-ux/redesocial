@@ -18,6 +18,7 @@ reutilizada** — ADR apagado deixa o número queimado.
 | [0006](0006-testes-contra-sqlite-real.md) | Testes de integração contra SQLite real, sem mock do Prisma | Aceita | 2026-10-13 |
 | [0007](0007-upload-atraves-de-imagestorage.md) | Upload atrás da porta `ImageStorage` (local × S3 pelo `.env`) | Aceita | 2026-10-14 |
 | [0008](0008-better-sqlite3-pin-global.md) | `better-sqlite3` fixado no override global (prebuilds, sem script de build) | Aceita | 2026-10-31 |
+| [0009](0009-postimage-tabela-propria.md) | `PostImage` como tabela própria (1:N com `order`), migrando `Post.imageUrl` com passo de dados | Aceita | 2026-10-31 |
 
 ## Template
 

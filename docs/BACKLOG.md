@@ -15,8 +15,8 @@ item 1 já entregue.
 | E0 | 1 | conserto durável da dependência nativa (`better-sqlite3`) | — | — |
 | E0b | 1 | ✅ hardening: `select` explícito, 500 sem vazar interno, validação de `:id`, `GET /posts/:id` | pré-requisito de E1 | E0 |
 | E1 | 3 | comentários em post: escrita ✅, autorização ✅, UI via `fetch` ✅ | atividade 2 | E0b |
-| E2 | 3 | curtida em comentário + otimista/rollback nos comentários | atividades 3 e 8 | E1a |
-| E3 | 3 | múltiplas fotos: decisão, migração com dados, `upload.array` | atividade 4 | E2c |
+| E2 | 3 | curtida em comentário ✅ + otimista/rollback nos comentários ✅ | atividades 3 e 8 | E1a |
+| E3 | 3 | múltiplas fotos: decisão ✅, migração com dados ✅, `upload.array` ✅ | atividade 4 | E2c |
 | E4 | 1 | carrossel no feed | atividade 5 | E3c |
 | E5 | 3 | feed paginado por cursor + scroll infinito | atividade 6 | E4 |
 | E6 | 3 | editar comentário, ordenar por curtidas, contador de novidades | atividades 7, 9, 10 | E2b |
@@ -121,7 +121,7 @@ redirecionam. 3 testes de view novos (total 110) e verificação no **navegador 
 apagar sem reload, contador de 0 → 1 → 0.
 **Risco.** `Comment` tem `parentId` (respostas): decidir se a UI já cria resposta em thread ou se fica para depois — registrar a decisão, não deixar meio-feito.
 
-## E2 — curtida em comentário (atividades 3 e 8) — E2a ✅ concluído em 31/10
+## E2 — curtida em comentário (atividades 3 e 8) — ✅ concluído em 31/10
 
 **Escopo.** `toggleCommentLike` no `LikeController` (sem migração: `Like.commentId` + `@@unique` já
 existem), rotas `POST`/`DELETE /comments/:id/like`, botão por comentário e `feed.js` generalizado
@@ -133,16 +133,46 @@ aceitava `commentId` com `@@unique([userId, commentId])` e CHECK de alvo exclusi
 provado no servidor real: toggle 1→0, dois usuários somam 2, DELETE idempotente, 302 sem sessão, 404
 inexistente, 400 id malformado, e no banco o like aparece com `postId` nulo e `commentId` preenchido.
 
+**Feito (E2b).** `views/partials/comment.ejs` passou a renderizar o comentário (autor, conteúdo,
+curtida e "apagar") — usado pelo feed **e** pela página do post, acabando com o markup duplicado que
+o E1b deixou. `UserController.feed` e `PostController.getForView` preenchem `_count.likes` e
+`likedByMe` por comentário com **uma** consulta por página (não uma por comentário). No
+`public/feed.js`, o `LIKE_FORM` virou `form[action$="/like"]`: o mesmo `toggleLike` serve post e
+comentário, sem bifurcação. 3 testes novos (120 no total) e verificação no navegador com as três
+fases do item 8: otimista (contagem 1→0 em 0,4 s, botão desabilitado), falha de rede simulada e
+rollback (volta a 1 com a mensagem "Não foi possível curtir agora.").
+
 **Aceite.** Toggle, contagem isolada por alvo, 404, auth, duplicidade (`P2002`), otimista com
 rollback verificável com rede lenta.
 
-## E3 — múltiplas fotos (atividade 4)
+## E3 — múltiplas fotos (atividade 4) — ✅ concluído em 31/10
 
 **Bloqueado até a decisão `PostImage` × `Image`** (cartão E3a → gera ADR-0009).
 **Escopo.** Migração em três passos (criar → `INSERT ... SELECT` de `Post.imageUrl` → remover
 coluna), `upload.array('images', 5)` com um `imageStorage.upload()` por arquivo, views e testes.
-**Aceite.** Foto dos posts do seed preservada após a migração; `order` correto; limite e MIME
-tratados; `CHECK` do `Like` ainda ativo (`schema.test.ts` verde).
+**Feito (E3b).** ADR-0009 decidido pelo enunciado: `PostImage (id, url, order, postId)` com
+`@@unique([postId, order])` e `onDelete: Cascade`; `Image` continua como arquivo do usuário e
+`Image.postId` fica legado. Migration `20261031230000_add_post_image` gerada com
+`prisma migrate diff` (o `migrate dev` recusa rodar sem TTY neste ambiente) e **editada à mão** para
+incluir o passo de dados entre o `CREATE TABLE` e a reconstrução de `Post`:
+
+```sql
+INSERT INTO "PostImage" ("url", "order", "postId")
+SELECT "imageUrl", 0, "id" FROM "Post" WHERE "imageUrl" IS NOT NULL;
+```
+
+**Provado com dado real**: criei um post com foto pelo código antigo (post 13, `imageUrl =
+/uploads/b48cff80-….png`), apliquei a migration e conferi no `dev.db` — `PostImage` ganhou a linha
+`(url, order 0, postId 13)` e a coluna `imageUrl` deixou de existir. Em banco novo o passo roda e não
+seleciona nada (a coluna só existe até esta migration).
+
+**Feito (E3c).** `upload.array('images', 5)` em `POST /posts`, **um `imageStorage.upload()` por
+arquivo** em sequência (é a ordem do laço que define `PostImage.order`), `PostController.create`
+recebendo `string[]`, includes ordenados por `order` nas três leituras (feed, página do post, API),
+`newPost.ejs` com `multiple`, e o seed agora tem um post com 2 fotos (`placehold.co`, sem binário no
+repo). 6 testes novos em `post-images.test.ts` (total 126). No servidor real: 3 arquivos → 3 linhas
+com `order` 0/1/2 e URLs distintas; 6 arquivos → 400; feed mostra a 1ª foto e "+ 1 foto(s)"; página
+do post mostra as duas na ordem.
 
 ## E4 — carrossel (atividade 5)
 

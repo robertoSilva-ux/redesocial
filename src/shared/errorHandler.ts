@@ -61,7 +61,9 @@ const MULTER_STATUS: Record<string, number> = {
 
 const MULTER_MESSAGE: Record<string, string> = {
   LIMIT_FILE_SIZE: `Arquivo maior que o limite de ${MULTER_LIMIT_MB} MB`,
-  LIMIT_UNEXPECTED_FILE: 'Campo de arquivo não aceito por esta rota',
+  // O multer usa LIMIT_UNEXPECTED_FILE nos dois casos: campo com nome errado e
+  // array passando do `maxCount` — por isso a mensagem cobre os dois.
+  LIMIT_UNEXPECTED_FILE: 'Campo de arquivo não aceito ou limite de arquivos excedido nesta rota',
   LIMIT_FILE_COUNT: 'Arquivos demais para esta rota',
 };
 

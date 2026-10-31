@@ -21,7 +21,9 @@
   const feed = document.getElementById('feed');
   if (!feed) return;
 
-  const LIKE_FORM = 'form[action^="/posts/"][action$="/like"]';
+  // Serve curtida de POST e de COMENTÁRIO: as duas rotas terminam em `/like` e
+  // devolvem o mesmo `{ liked, likeCount }`, então o handler é um só.
+  const LIKE_FORM = 'form[action$="/like"]';
   const COMMENT_FORM = 'form[data-comment-form]';
   const COMMENT_DELETE = 'form[data-comment-delete]';
 
@@ -161,6 +163,7 @@
 
     p.append(author, content);
     li.appendChild(p);
+    li.appendChild(buildLikeForm(comment));
 
     // Quem comentou pela própria sessão é o dono — pode apagar.
     const form = document.createElement('form');
@@ -176,6 +179,48 @@
     form.appendChild(button);
     li.appendChild(form);
     return li;
+  }
+
+  /**
+   * Monta o mesmo botão de curtida que o partial `views/partials/comment.ejs`
+   * renderiza — comentário novo nasce com o botão já funcional, porque a
+   * delegação em `#feed` cobre qualquer `form[action$="/like"]`.
+   */
+  function buildLikeForm(comment) {
+    const form = document.createElement('form');
+    form.method = 'post';
+    form.action = `/comments/${comment.id}/like`;
+    form.dataset.commentLike = '';
+
+    const button = document.createElement('button');
+    button.type = 'submit';
+    button.title = 'Curtir comentário';
+    button.dataset.liked = '0';
+    button.setAttribute('aria-pressed', 'false');
+    button.className = 'flex items-center gap-1 text-xs text-slate-400 hover:text-rose-600';
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('class', 'w-4 h-4');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.8');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    path.setAttribute(
+      'd',
+      'M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z',
+    );
+    svg.appendChild(path);
+
+    const counter = document.createElement('span');
+    counter.dataset.likeCount = '';
+    counter.textContent = String(comment._count?.likes ?? 0);
+
+    button.append(svg, counter);
+    form.appendChild(button);
+    return form;
   }
 
   async function deleteComment(form) {

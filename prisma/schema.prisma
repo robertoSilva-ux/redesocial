@@ -49,9 +49,9 @@ model Follow {
 model Post {
   id        Int      @id @default(autoincrement())
   content   String
-  // URL pública do arquivo no S3 (ou no storage local, em dev) — o binário
-  // da imagem nunca é salvo no banco, só o endereço dele. Ver src/uploads/.
-  imageUrl  String?
+  // `imageUrl` foi removido na migration do ADR-0009: a foto do post agora é
+  // uma relação 1:N com `PostImage` (com `order`), e cada arquivo continua
+  // guardando só a URL — o binário vive no ImageStorage, nunca no banco.
   createdAt DateTime @default(now())
 
   authorId Int
@@ -63,7 +63,28 @@ model Post {
   // ---- do Exercício 1 (Aula 04) ----
   comments Comment[]
   likes    Like[]
-  images   Image[]
+
+  // Fotos do post, ordenadas (Trabalho II, item 4 / ADR-0009).
+  images PostImage[]
+
+  // Arquivos do usuário presos a este post — relação do Exercício 1, mantida
+  // como legado. Não é "a foto do post": `Image` pertence ao usuário e
+  // sobrevive ao post (onDelete: SetNull). Ver ADR-0009.
+  legacyImages Image[]
+}
+
+// Foto de um post. Diferente de `Image`: pertence ao post (Cascade), tem
+// ordem explícita e não carrega metadados de arquivo.
+// `@@unique([postId, order])` transforma a ordem em invariante — sem ele, duas
+// fotos com a mesma `order` deixariam a leitura não determinística.
+model PostImage {
+  id     Int    @id @default(autoincrement())
+  url    String
+  order  Int    @default(0)
+  postId Int
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, order])
 }
 
 model Tag {

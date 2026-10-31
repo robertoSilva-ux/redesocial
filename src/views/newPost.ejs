@@ -28,8 +28,15 @@
             <input type="text" name="tags" placeholder="prisma, orm" class="mt-1 w-full border rounded px-3 py-2" />
           </label>
           <label class="text-sm text-slate-600">
-            Imagem (opcional)
-            <input type="file" name="image" accept="image/jpeg,image/png,image/webp" class="mt-1 w-full text-sm" />
+            Fotos (opcional, até 5)
+            <input
+              type="file"
+              name="images"
+              multiple
+              accept="image/jpeg,image/png,image/webp"
+              class="mt-1 w-full text-sm"
+            />
+            <span class="block text-xs text-slate-400 mt-1">A ordem em que você escolher é a ordem do carrossel.</span>
           </label>
           <button type="submit" class="bg-slate-800 text-white rounded px-3 py-2 mt-2 hover:bg-slate-700">
             Publicar

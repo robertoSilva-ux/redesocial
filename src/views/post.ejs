@@ -25,9 +25,9 @@
           <p class="text-xs text-slate-400"><%= new Date(post.createdAt).toLocaleString('pt-BR') %></p>
         </header>
         <p class="text-slate-700 mt-2"><%= post.content %></p>
-        <% if (post.imageUrl) { %>
-          <img src="<%= post.imageUrl %>" alt="" class="mt-3 rounded-lg w-full object-cover" />
-        <% } %>
+        <% (post.images ?? []).forEach((foto) => { %>
+          <img src="<%= foto.url %>" alt="" class="mt-3 rounded-lg w-full object-cover" />
+        <% }) %>
         <% if (post.tags.length > 0) { %>
           <div class="flex gap-2 mt-3 flex-wrap">
             <% post.tags.forEach((tag) => { %>
@@ -82,20 +82,14 @@
           </button>
         </form>
 
-        <div class="divide-y mt-2">
+        <ul class="flex flex-col gap-2 mt-2" data-comment-list>
           <% if (comments.length === 0) { %>
-            <p class="text-sm text-slate-500 py-3">Nenhum comentário ainda. Seja o primeiro.</p>
+            <li class="text-sm text-slate-500 py-3">Nenhum comentário ainda. Seja o primeiro.</li>
           <% } %>
           <% comments.forEach((comment) => { %>
-            <div class="py-3">
-              <div class="flex items-center justify-between">
-                <p class="text-sm font-medium text-slate-800"><%= comment.author.name %></p>
-                <p class="text-xs text-slate-400"><%= new Date(comment.createdAt).toLocaleString('pt-BR') %></p>
-              </div>
-              <p class="text-sm text-slate-700 mt-1"><%= comment.content %></p>
-            </div>
+            <%- include('partials/comment', { comment, currentUser }) %>
           <% }) %>
-        </div>
+        </ul>
       </section>
     </main>
   </body>

@@ -128,3 +128,72 @@ describe('DELETE /comments/:id/like (idempotente)', () => {
     expect(segundo.body).toEqual({ liked: false, likeCount: 0 });
   });
 });
+
+describe('UI — curtida de comentário no feed e na página do post (E2b)', () => {
+  /** Seguidor do autor (o feed mostra posts de quem se segue, não os próprios). */
+  async function cenarioComSeguidor() {
+    const autor = await registerAndLogin(app, prisma, 'autor@exemplo.com', 'Autor');
+    await autor.agent.post('/posts').type('form').send({ content: 'post do autor' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'post do autor' } });
+    const criado = await autor.agent
+      .post(`/posts/${post.id}/comments`)
+      .set(asJson)
+      .send({ content: 'comentário do autor' });
+
+    const seguidor = await registerAndLogin(app, prisma, 'seguidor@exemplo.com', 'Seguidor');
+    await seguidor.agent.post('/follow').type('form').send({ targetId: autor.userId });
+
+    return { autor, seguidor, post, comentario: criado.body };
+  }
+
+  /**
+   * Recorta o pedaço do HTML que contém o botão de curtida daquele comentário.
+   * Assertiva por regex com janela fixa quebra fácil (o `d` do SVG tem ~200
+   * caracteres entre os dois atributos).
+   */
+  function blocoDoComentario(html: string, commentId: number) {
+    const marca = `action="/comments/${commentId}/like"`;
+    const i = html.indexOf(marca);
+    expect(i, `botão de curtida do comentário ${commentId} não está no HTML`).toBeGreaterThan(-1);
+    return html.slice(Math.max(0, i - 400), i + 900);
+  }
+
+  it('o feed tem um botão de curtida por comentário, com a contagem', async () => {
+    const { autor, seguidor, comentario } = await cenarioComSeguidor();
+    await autor.agent.post(`/comments/${comentario.id}/like`).set(asJson);
+
+    const res = await seguidor.agent.get('/');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toMatch(/data-comment-like/);
+    const bloco = blocoDoComentario(res.text, comentario.id);
+    // 1 curtida no comentário, e quem está vendo (seguidor) não foi quem curtiu
+    expect(bloco).toContain('data-liked="0"');
+    expect(bloco).toMatch(/data-like-count>1</);
+  });
+
+  it('quem curtiu vê o botão marcado (data-liked="1")', async () => {
+    const { seguidor, comentario } = await cenarioComSeguidor();
+    await seguidor.agent.post(`/comments/${comentario.id}/like`).set(asJson);
+
+    const res = await seguidor.agent.get('/');
+
+    const bloco = blocoDoComentario(res.text, comentario.id);
+    expect(bloco).toContain('data-liked="1"');
+    expect(bloco).toMatch(/data-like-count>1</);
+  });
+
+  it('a página do post usa o mesmo partial e mostra a curtida do comentário', async () => {
+    const { autor, seguidor, post, comentario } = await cenarioComSeguidor();
+    await seguidor.agent.post(`/comments/${comentario.id}/like`).set(asJson);
+
+    const paraSeguidor = await seguidor.agent.get(`/posts/${post.id}`);
+    const paraAutor = await autor.agent.get(`/posts/${post.id}`);
+
+    expect(paraSeguidor.status).toBe(200);
+    expect(paraSeguidor.text).toMatch(/data-comment-like/);
+    expect(paraSeguidor.text).toMatch(/data-liked="1"/);
+    // o autor não curtiu o próprio comentário
+    expect(paraAutor.text).toMatch(/data-liked="0"/);
+  });
+});
