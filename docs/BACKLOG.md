@@ -1,0 +1,134 @@
+# Backlog — Trabalho II
+
+Fonte do escopo: `tads-webii-2026-2/TRABALHOS/TRABALHO II.md` (10 atividades; 1→6 encadeadas).
+Este arquivo é a **especificação** do trabalho; o fluxo (quem faz, o que está em andamento, o que
+travou) vive no quadro Kanban do Hermes, board **`webii`**.
+
+Regra do backlog: todo cartão termina com `npm test` verde e, quando muda arquitetura, com
+`docs/arquitetura/c4.md` atualizado no mesmo commit. Baseline antes deste trabalho: **74 testes**,
+item 1 já entregue.
+
+## Resumo
+
+| Inc. | Cartões | Escopo | Enunciado | Depende de |
+| --- | --- | --- | --- | --- |
+| E0 | 1 | conserto durável da dependência nativa (`better-sqlite3`) | — | — |
+| E0b | 1 | ✅ hardening: `select` explícito, 500 sem vazar interno, validação de `:id`, `GET /posts/:id` | pré-requisito de E1 | E0 |
+| E1 | 3 | comentários em post: escrita, autorização, UI via `fetch` | atividade 2 | E0b |
+| E2 | 3 | curtida em comentário + otimista/rollback nos comentários | atividades 3 e 8 | E1a |
+| E3 | 3 | múltiplas fotos: decisão, migração com dados, `upload.array` | atividade 4 | E2c |
+| E4 | 1 | carrossel no feed | atividade 5 | E3c |
+| E5 | 3 | feed paginado por cursor + scroll infinito | atividade 6 | E4 |
+| E6 | 3 | editar comentário, ordenar por curtidas, contador de novidades | atividades 7, 9, 10 | E2b |
+| E7 | 3 | fechamento: README, cobertura, revisão e roteiro da gravação | critérios de avaliação | E5c + E6 |
+
+## E0 — ambiente — ✅ concluído em 31/10
+
+**Problema.** `npm install` reinstalava `better-sqlite3@12.11.1` aninhado em
+`@prisma/adapter-better-sqlite3`, com binário incompatível com Node 24 (ABI 137): 69 de 74 testes
+caíam com `Module did not self-register`.
+
+**Solução (ADR-0008).** Override global `"better-sqlite3": "^13.0.3"` em `package.json` + lock
+regenerado com `npm install --package-lock-only`. A cópia aninhada sumiu (o lock perdeu 361 linhas,
+todas dela), o adapter resolve `13.0.3` (`deduped`) e a 13.0.3 traz `prebuilds/` no tarball — instala
+sem precisar aprovar script de build.
+
+**Aceite cumprido.** `npm ci` de árvore limpa → `npm test` **74/74**, verificado primeiro numa cópia
+isolada e depois no repositório; `npm ls better-sqlite3` = uma cópia, sem `invalid`;
+`npm install --dry-run` não propõe nenhum `add`.
+
+## E0b — hardening — ✅ concluído em 31/10
+
+Veio da revisão de código, não do enunciado: defeitos que o avaliador encontra e que o E1 herdaria.
+Resultado: `passwordHash` fora de todas as respostas, 500 sem detalhe interno, `:id` validado em toda
+rota e `GET /posts/:id` funcionando — **86 testes** (74 + 12 novos em `test/integration/hardening.test.ts`).
+
+| Achado | Evidência | Correção |
+| --- | --- | --- |
+| `passwordHash` (e `email`) na API | `GET /api/users/10` e `/api/posts/10` devolvem o hash; `include: { author: true }` | `select` explícito em todo include |
+| 500 com stack do Prisma e caminho do projeto | `GET /api/posts/abc` → 500 com `invocation in /home/…PostController.ts:50` | validar `:id`; 500 com mensagem genérica + log no servidor |
+| Erro de `/api/*` em HTML | cliente com `Accept: */*` recebe página de erro | decidir por path, não só por `Accept` |
+| `GET /posts/:id` inexistente | feed linka `/posts/<id>`; `post.ejs` sem rota | registrar a rota com `requireAuth` |
+
+**Aceite.** Teste que falha se `passwordHash` aparecer em qualquer resposta `/api/*`; nenhuma resposta
+contendo `prisma`/caminho de arquivo; `curl` sem header em `/api/*` devolve JSON; página do post
+abre com 200. Ajustar `test/integration/errors.test.ts:86-92`, que hoje afirma o vazamento.
+
+**Fora deste cartão** (registrados para decisão posterior): sessão (`sameSite`/`secure`/`regenerate`
+no login, fallback do `SESSION_SECRET`), CSRF nos POSTs, validação real de upload (magic bytes +
+extensão derivada do tipo), arquivo órfão quando a validação falha, `MulterError` caindo em 500,
+`listByTag` sem paginação (o README diz que é paginada) e o `console.log` em `webRoutes.ts:109`.
+
+## E1 — comentários (atividade 2)
+
+**Escopo.** `create`/`listByPost`/`remove` no `comments/`, `requireOwnComment`, rotas
+`POST`/`GET /posts/:id/comments` e `DELETE /comments/:id`, form no feed via `fetch` com o comentário
+inserido sem reload, botão apagar só no próprio.
+**Aceite.** Testes de integração com caminho feliz **e** erro por rota (sem sessão, conteúdo vazio,
+post inexistente, apagar de outro). Nenhum teste existente alterado.
+**Risco.** `Comment` tem `parentId` (respostas): decidir se a UI já cria resposta em thread ou se fica para depois — registrar a decisão, não deixar meio-feito.
+
+## E2 — curtida em comentário (atividades 3 e 8)
+
+**Escopo.** `toggleCommentLike` no `LikeController` (sem migração: `Like.commentId` + `@@unique` já
+existem), rotas `POST`/`DELETE /comments/:id/like`, botão por comentário e `feed.js` generalizado
+para os dois alvos.
+**Aceite.** Toggle, contagem isolada por alvo, 404, auth, duplicidade (`P2002`), otimista com
+rollback verificável com rede lenta.
+
+## E3 — múltiplas fotos (atividade 4)
+
+**Bloqueado até a decisão `PostImage` × `Image`** (cartão E3a → gera ADR-0009).
+**Escopo.** Migração em três passos (criar → `INSERT ... SELECT` de `Post.imageUrl` → remover
+coluna), `upload.array('images', 5)` com um `imageStorage.upload()` por arquivo, views e testes.
+**Aceite.** Foto dos posts do seed preservada após a migração; `order` correto; limite e MIME
+tratados; `CHECK` do `Like` ainda ativo (`schema.test.ts` verde).
+
+## E4 — carrossel (atividade 5)
+
+**Escopo.** Partial reaproveitado por feed e página do post + `carousel.js` (setas, indicadores,
+teclado, `aria-live`), só quando `images.length > 1`.
+**Aceite.** HTML com controles apenas com mais de uma foto; navegar não dispara requisição.
+
+## E5 — feed paginado e scroll infinito (atividade 6)
+
+**Bloqueado até a decisão “fragmento HTML × JSON”** (cartão E5a → ADR-0010). Cursor já é decisão
+tomada (ADR-0005): `?cursor=&limit=`, ordenação `createdAt desc, id desc`.
+**Escopo.** Extrair `partials/postCard.ejs`, `GET /api/feed`, `IntersectionObserver` + append no
+`feed.js` com guarda de fim de lista e erro de rede.
+**Aceite.** Páginas consecutivas sem repetir nem omitir; DevTools mostra só `fetch`; curtir e
+comentar posts carregados por scroll funcionam sem listener novo (é o que prova a delegação de
+eventos da discussão item 4).
+
+## E6 — acabamento (atividades 7, 9 e 10)
+
+| Cartão | Escopo                                                                    | Aceite                                                                              |
+| ------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| E6a    | `PATCH /comments/:id`, edição inline                                      | próprio 200, de outro 403, vazio 400, 404                                           |
+| E6b    | comentários por `_count.likes` (consulta própria, fora do `buildOrderBy`) | mais curtido primeiro, empate estável                                               |
+| E6c    | `User.lastSeenAt` + contador de novidades                                 | conta like/comment de terceiros nos meus posts, não os meus, zera no próximo acesso |
+
+## E7 — fechamento
+
+1. README da raiz: link para `docs/`, headings `# Item N` → `##`, decisões finais (texto do autor).
+2. Cobertura (`npm run test:coverage`) + revisão item por item contra o enunciado.
+3. Roteiro da gravação de 15 min e checklist de entrega.
+
+## Onde cada critério de rubrica é provado
+
+| Critério do enunciado                           | Provado por                                                 |
+| ----------------------------------------------- | ----------------------------------------------------------- |
+| Testes passam, sem regressão da Aula 05         | suíte inteira em cada cartão                                |
+| Cobertura: feliz + erro por funcionalidade nova | testes de integração em E1, E2, E3, E5, E6                  |
+| Autorização sempre da sessão                    | `requireAuth`/`requireOwnComment` e testes de 403           |
+| Fronteira de módulo                             | tabela em `arquitetura/c4.md` (nível 3a) + `ADR-0001`       |
+| Migração sem perda de dados                     | teste da migração em E3b                                    |
+| UI sem reload                                   | DevTools nos cartões E1b, E2b, E5c                          |
+| Registro de decisões                            | `docs/adr/` 0001–0009 + `README.md` (discussão obrigatória) |
+
+## Decisões que travam o backlog
+
+| Cartão | Decisão                                     | Consequência de errar                           |
+| ------ | ------------------------------------------- | ----------------------------------------------- |
+| E3a    | `PostImage` novo × reaproveitar `Image`     | define a migração inteira do item 4             |
+| E5a    | fragmento HTML × JSON + template no cliente | duplica ou não o markup do card em dois lugares |

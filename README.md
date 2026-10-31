@@ -23,7 +23,7 @@ npm test                     # suíte de integração (usa um SQLite dedicado, t
 ### Notas de ambiente (ler antes de culpar o código)
 
 * **Prisma Studio + SQLite no Prisma 7**: o CLI rejeita o `file:./dev.db` (relativo) que vem do `.env` com `! Prisma Studio is not supported for the "file:./dev.db" protocol.` — bug aberto em [`prisma/studio#1578`](https://github.com/prisma/studio/issues/1578). O Studio só aceita `file://` **com caminho absoluto**. Por isso o script `npm run prisma:studio` não chama o CLI direto: ele passa por [`scripts/prisma-studio.mjs`](scripts/prisma-studio.mjs), que converte o `DATABASE_URL` relativo para `file://<caminho absoluto>` e só então abre o Studio. Se quiser chamar na mão: `npx prisma studio --url="file://$PWD/dev.db"`.
-* **npm 12 bloqueia install scripts**: o `postinstall` que rodava `prisma generate` não executa sozinho. Depois de um `npm install` limpo, rode `npx prisma generate` (ou aprove com `npm install-scripts approve prisma`). O mesmo vale para o `node-gyp rebuild` do `better-sqlite3`.
+* **npm bloqueia install scripts de dependências** (a partir do 11.16). O `postinstall` do próprio projeto (`prisma generate`) roda normalmente; o que não roda são os scripts dos pacotes instalados. Liberação é por pacote, com `npm approve-scripts <pacote>`. O `better-sqlite3` **não precisa** disso: desde o ADR-0008 a versão usada é a 13.0.3, que vem com binário pré-compilado em `prebuilds/` — se a suíte inteira falhar com `Module did not self-register`, o problema é uma segunda cópia do pacote, e `npm ls better-sqlite3` mostra isso em um comando. Depois de mudar o schema, `npx prisma generate` continua sendo necessário (ver nota abaixo).
 * **`prisma migrate dev` não regenerou o client neste ambiente** (verificado: `node_modules/.prisma/client/index.d.ts` ficou sem os models novos depois da migration). Regra prática: **depois de qualquer mudança de schema, rode `npx prisma generate` explicitamente** antes de rodar o seed ou a suíte, senão os delegates novos aparecem como `undefined` em runtime e o tsc/LSP acusa `Property 'x' does not exist on type 'PrismaClient'`.
 * **Checksum de migration divergente**: se o Prisma reclamar `The migration ... was modified after it was applied` e quiser rodar `migrate reset` (apagando `dev.db`), verifique antes se a diferença é só cosmética:
   ```bash
@@ -114,6 +114,31 @@ De propósito, os Controllers chamam o Prisma Client diretamente — **não há 
 3. Ler `UserController.follow` e discutir: por que validar `targetId === followerId` no código, em vez de deixar o banco rejeitar? E por que ainda assim existe um `try/catch` para `P2002`?
 4. Alterar `Follow` para incluir um campo `createdAt` já existe — desafio: adicionar um endpoint `GET /users/:id/following` que lista quem o usuário segue (usar `user.following` com `include: { following: true }`).
 
-## Discussão para a Aula 05
+## Documentação do projeto
 
-Pensando em portas e adaptadores, caso fosse criado uma porta ligando o controller ao ORM (prisma cliente) isso iria eliminar a dependência direta do prisma, deixando a possibilidade de adaptar futuramente outro ORM sem muitas alterações no restante do app, porém este é um evento raro em projetos e o prisma já possui alguma flexibilidade quanto as mudanças no banco de dados. Os ganhos da arquitetura exagonal vêm do isolamento do domínio, isolar o controller já é uma camada abaixo. A análise do quanto custa a um projeto deste tamanho passa pela maturidade do projeto, da verificação de partes melhores candidatas ao isolamento do dominio da aplicação, caso o porte do projeto justifique a complexidade trazida com essas alterações.
+O **porquê** das decisões fica em [`docs/`](docs/README.md), separado do código:
+
+* [`docs/adr/`](docs/adr/README.md) — registros de decisão (contexto, decisão, alternativas descartadas, consequências), do 0001 ao 0008.
+* [`docs/arquitetura/c4.md`](docs/arquitetura/c4.md) — diagramas C4: contexto, containers e componentes (dois recortes no nível 3).
+* [`docs/BACKLOG.md`](docs/BACKLOG.md) — o Trabalho II em incrementos, com critério de aceite por cartão.
+
+Regra: mudou um módulo ou uma dependência externa, o diagrama muda no **mesmo commit**; decisão nova vira ADR novo (ADR aceito não se edita, se substitui).
+
+## Discussão em sala — Aula 05
+
+Pensando em portas e adaptadores, caso fosse criado uma porta ligando o controller ao ORM (prisma cliente) isso iria eliminar a dependência direta do prisma, deixando a possibilidade de adaptar futuramente outro ORM sem muitas alterações no restante do app, porém este é um evento raro em projetos e o prisma já possui alguma flexibilidade quanto as mudanças no banco de dados. Os ganhos da arquitetura exagonal vêm do isolamento do domínio, isolar o controller já é uma camada fora. A análise do quanto custa a um projeto deste tamanho passa pela maturidade do projeto, da verificação de partes melhores candidatas ao isolamento do dominio da aplicação, caso o porte do projeto justifique a complexidade trazida com essas alterações.
+
+
+
+
+
+## Discussão obrigatória — Trabalho II
+
+## Item 1
+Quanto a decisão pela criação de LikeCOntroller.ts e CommentController.ts foi tomada, com base na arquitetura do projeto por módulos, aconteceu antes de implementar a parte de escrita (persistência). Mas pensando agora sobre o que foi codificado, penso que se justifica, tendo em vista que poderá haver comentário de comentário, não necessariamente ligado a um post e que comentários poderão receber likes, ou seja, o like é ligado ao comentário, não a o post diretamente. Desta forma, não quebramos o princípio da responsabilidade única.
+## Item 2
+Em produção, considero que o banco tenha dados que não devem ser replicados e dependendo das alterações, o dump dos dados não validaria em um novo formato de campos/tabelas, não vale o risco. Na prática prisma migrate reset nunca deve ser utilizado em produção. Os comandos possíveis em produção são como prisma migrate deploy, incremental e não destrutivo.
+## Item 3
+De fato, o fetch torna a navegação mais fluída, evitando o reload a cada iteração. Porém o form tem varias vantagens da tag, enquanto o fetch terá de ser controlado e validado via js no frontend.
+## Item 4
+A delegação de eventos consiste em ouvir eventos em um nó do DOM ancestral, que não seja feito o reload durante o carregamento ou interações e que fique mais próximo possível ao nó que queremos monitorar. No caso em tela, poderia colocar o listener para ouvir <section id="feed">.

@@ -1,0 +1,64 @@
+# Documentação do projeto
+
+Este diretório guarda o **porquê** das decisões — o código e o `README.md` da raiz explicam o
+**quê** e o **como**.
+
+```
+docs/
+├── README.md              este índice
+├── BACKLOG.md             especificação do Trabalho II em incrementos (E0..E7)
+├── adr/                   Architecture Decision Records (um arquivo por decisão)
+│   ├── README.md          índice, convenção e template
+│   ├── 0001 ... 0008      decisões aceitas
+└── arquitetura/
+    └── c4.md              diagramas C4: contexto (1), containers (2) e componentes (3)
+```
+
+## Por que ADR
+
+O enunciado do Trabalho II pede o *registro das decisões* e o critério de avaliação cobra que
+elas estejam identificáveis. O `README.md` responde às perguntas da discussão obrigatória em
+prosa; o ADR faz o mesmo no formato canônico — **contexto, decisão e consequências** — para que
+cada escolha tenha um registro datado, com as alternativas que foram descartadas e o custo que
+ela impõe depois. A diferença prática: prosa explica a escolha para quem lê hoje; o ADR impede
+que a mesma discussão seja refeita daqui a três semanas, porque o custo já está escrito.
+
+## Por que C4
+
+O diagrama de containers mostra onde cada módulo roda e quem fala com quem. Serve para três
+coisas concretas neste projeto: (1) provar que `posts/`, `comments/` e `likes/` não se importam
+entre si; (2) mostrar que o Prisma é a única porta para o banco; (3) mostrar que `ImageStorage`
+é a costura entre a aplicação e o S3 — a única peça que troca sem tocar em controller.
+
+## Regras de manutenção
+
+1. **Decisão nova = ADR novo.** Não editar ADR aceito; para mudar de ideia, escrever um novo com
+   `Status: Aceita` e marcar o antigo como `Substituída por ADR-XXXX`.
+2. **Diagrama junto da mudança.** Módulo novo (`carousel/`, `feed/`), rota nova de interação ou
+   dependência externa nova → atualizar `arquitetura/c4.md` **no mesmo commit** da feature. Um C4
+   desatualizado é pior que nenhum: mente com aparência de fonte primária.
+3. **ADR sem consequência negativa é propaganda.** Toda decisão tem custo; se o custo não está
+   escrito, a análise está incompleta.
+
+## Convenções que o código já assume
+
+* **Nenhum `include` traz a linha inteira de `User`.** Lista, busca e detalhe usam
+  `publicUserSelect` (`src/shared/selects.ts`): `author: true` foi o que vazou `passwordHash` em
+  `/api/users/:id`, `/api/posts/:id` e `/api/users/:id/feed`. Controller novo segue a mesma regra.
+* **Erro 5xx não devolve mensagem interna.** O detalhe vai para o log do servidor
+  (`src/shared/errorHandler.ts`); o cliente recebe "Erro interno do servidor".
+* **`:id` de rota passa por `parseIdParam`** (`src/shared/http.ts`): id malformado é 400, nunca 500 do Prisma.
+
+## Pendências conhecidas (não são decisões tomadas)
+
+Registradas aqui para não se perderem; viram ADR quando forem decididas.
+
+- **`Like` × `CommentLike`** — o enunciado nomeia duas tabelas; existe uma só, polimórfica
+  (ADR-0002). Se a decisão for separar, o ADR-0002 é substituído.
+- **`PostImage`** — o enunciado nomeia a tabela; hoje existe `Image` (1:N com `Post`, com
+  `ownerId`, mime e `SetNull`). A escolha define a migração do item 4 do trabalho.
+- **Feed do scroll infinito**: fragmento HTML renderizado no servidor × JSON + template no
+  cliente (ADR-0005 já registra que o cursor conviverá com `page/pageSize`).
+- **Ambiente**: resolvido no ADR-0008 (override global de `better-sqlite3` + lock regenerado).
+  Sintoma de regressão: suíte inteira vermelha com `Module did not self-register` — conferir com
+  `npm ls better-sqlite3` (duas cópias = override perdido).
