@@ -103,15 +103,34 @@ describe('leitura das fotos nas views', () => {
     return { autor, seguidor, post };
   }
 
-  it('o feed mostra a primeira foto e avisa quantas mais existem', async () => {
+  it('o feed renderiza o carrossel com as duas fotos (E4)', async () => {
     const { seguidor } = await doisSeguidores();
 
     const res = await seguidor.agent.get('/');
 
     expect(res.status).toBe(200);
+    expect(res.text).toMatch(/data-carousel/);
     expect(res.text).toContain('https://fake-bucket.test/a.png');
-    expect(res.text).not.toContain('https://fake-bucket.test/b.png'); // a segunda é do carrossel (E4)
-    expect(res.text).toMatch(/\+ 1 foto/);
+    expect(res.text).toContain('https://fake-bucket.test/b.png');
+    // duas setas + dois indicadores + contador acessível
+    expect(res.text).toMatch(/data-carousel-prev/);
+    expect(res.text).toMatch(/data-carousel-next/);
+    expect((res.text.match(/data-carousel-dot=/g) ?? []).length).toBe(2);
+    expect(res.text).toMatch(/Foto 1 de 2/);
+  });
+
+  it('com uma única foto não há carrossel — só a imagem', async () => {
+    const autor = await registerAndLogin(app, prisma, 'autor@exemplo.com', 'Autor');
+    await autor.agent
+      .post('/posts')
+      .field('content', 'post com uma foto só')
+      .attach('images', PNG, { filename: 'unica.png', contentType: 'image/png' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'post com uma foto só' } });
+
+    const res = await autor.agent.get(`/posts/${post.id}`);
+
+    expect(res.text).toContain('https://fake-bucket.test/unica.png');
+    expect(res.text).not.toMatch(/data-carousel(?![\w-])/);
   });
 
   it('a página do post mostra todas as fotos, na ordem', async () => {

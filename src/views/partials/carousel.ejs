@@ -1,0 +1,60 @@
+<%#
+  Fotos de um post (item 4 e 5 do Trabalho II).
+
+  Usado pelo feed e pela página do post, sempre com `post.images` ordenado por
+  `order` (a ordem vem do upload). Comportamento:
+    0 fotos  -> não renderiza nada;
+    1 foto   -> só a imagem, igual ao que existia antes do carrossel;
+    2+ fotos -> carrossel, controlado por public/carousel.js.
+
+  Sem JavaScript o carrossel mostra a primeira foto (a segunda está no DOM mas
+  fora da área visível por `overflow-hidden`) — degradação aceitável, nada
+  quebra e nenhum link fica inalcançável.
+%>
+<% const fotos = images ?? []; %>
+
+<% if (fotos.length === 1) { %>
+  <img src="<%= fotos[0].url %>" alt="" class="mt-3 rounded-lg max-h-80 w-full object-cover" />
+<% } else if (fotos.length > 1) { %>
+  <div class="relative mt-3" data-carousel tabindex="0" role="group" aria-roledescription="carrossel">
+    <div class="overflow-hidden rounded-lg">
+      <div class="flex transition-transform duration-300 ease-out" data-carousel-track>
+        <% fotos.forEach((foto, indice) => { %>
+          <img
+            src="<%= foto.url %>"
+            alt=""
+            class="w-full shrink-0 max-h-80 object-cover"
+            data-carousel-slide
+            aria-hidden="<%= indice === 0 ? 'false' : 'true' %>"
+          />
+        <% }) %>
+      </div>
+    </div>
+
+    <button
+      type="button"
+      data-carousel-prev
+      aria-label="Foto anterior"
+      class="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 text-white leading-none hover:bg-black/70"
+    >&lsaquo;</button>
+    <button
+      type="button"
+      data-carousel-next
+      aria-label="Próxima foto"
+      class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 text-white leading-none hover:bg-black/70"
+    >&rsaquo;</button>
+
+    <div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+      <% fotos.forEach((_, indice) => { %>
+        <button
+          type="button"
+          data-carousel-dot="<%= indice %>"
+          aria-label="Ir para foto <%= indice + 1 %>"
+          class="w-2 h-2 rounded-full bg-white/60"
+        ></button>
+      <% }) %>
+    </div>
+
+    <p class="sr-only" aria-live="polite" data-carousel-live>Foto 1 de <%= fotos.length %></p>
+  </div>
+<% } %>
