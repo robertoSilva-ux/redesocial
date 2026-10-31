@@ -14,7 +14,7 @@ item 1 já entregue.
 | --- | --- | --- | --- | --- |
 | E0 | 1 | conserto durável da dependência nativa (`better-sqlite3`) | — | — |
 | E0b | 1 | ✅ hardening: `select` explícito, 500 sem vazar interno, validação de `:id`, `GET /posts/:id` | pré-requisito de E1 | E0 |
-| E1 | 3 | comentários em post: escrita ✅, autorização ✅, UI via `fetch` (pendente) | atividade 2 | E0b |
+| E1 | 3 | comentários em post: escrita ✅, autorização ✅, UI via `fetch` ✅ | atividade 2 | E0b |
 | E2 | 3 | curtida em comentário + otimista/rollback nos comentários | atividades 3 e 8 | E1a |
 | E3 | 3 | múltiplas fotos: decisão, migração com dados, `upload.array` | atividade 4 | E2c |
 | E4 | 1 | carrossel no feed | atividade 5 | E3c |
@@ -96,7 +96,7 @@ no login, fallback do `SESSION_SECRET`), CSRF nos POSTs, validação real de upl
 extensão derivada do tipo), arquivo órfão quando a validação falha, `MulterError` caindo em 500,
 `listByTag` sem paginação (o README diz que é paginada) e o `console.log` em `webRoutes.ts:109`.
 
-## E1 — comentários (atividade 2) — E1a ✅ concluído em 31/10
+## E1 — comentários (atividade 2) — ✅ concluído em 31/10
 
 **Escopo.** `create`/`listByPost`/`remove` no `comments/`, `requireOwnComment`, rotas
 `POST`/`GET /posts/:id/comments` e `DELETE /comments/:id`, form no feed via `fetch` com o comentário
@@ -109,6 +109,16 @@ post inexistente, apagar de outro). Nenhum teste existente alterado.
 `DELETE /comments/:id`) registradas em `server.ts`. 14 testes novos em
 `test/integration/comments.routes.test.ts` (total 100). Provado no servidor real: `authorId` do corpo
 ignorado (autoria da sessão), 403 ao apagar comentário alheio, 204 no próprio, 400 em conteúdo vazio.
+
+**Feito (E1b).** UI no feed: cada post mostra os 3 primeiros comentários (com autor), um formulário
+e o botão "apagar" só no comentário do próprio usuário. `public/feed.js` ganhou `createComment` e
+`deleteComment` na **mesma** delegação de `#feed` (nada de listener por botão), montando o `<li>`
+com `textContent` (sem `innerHTML` com dado de usuário) e atualizando o contador do rodapé.
+Comentário **não** é otimista de propósito: o texto e o id vêm da resposta 201; inventar um
+comentário antes exigiria inventar id e autor (a curtida continua otimista, porque é binária).
+Fallback sem JS preservado: `POST /posts/:id/comments` e o novo `POST /comments/:id/delete`
+redirecionam. 3 testes de view novos (total 110) e verificação no **navegador real**: comentar e
+apagar sem reload, contador de 0 → 1 → 0.
 **Risco.** `Comment` tem `parentId` (respostas): decidir se a UI já cria resposta em thread ou se fica para depois — registrar a decisão, não deixar meio-feito.
 
 ## E2 — curtida em comentário (atividades 3 e 8)

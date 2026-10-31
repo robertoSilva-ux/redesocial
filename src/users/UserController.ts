@@ -82,6 +82,15 @@ export class UserController {
         tags: true,
         images: true,
         _count: { select: { likes: true, comments: true } },
+        // Os 3 primeiros comentários de cada post (`take` em relação aninhada
+        // vale por post, não no total). O feed mostra a conversa começando;
+        // a página do post mostra todos. Ordem cronológica para o comentário
+        // novo, inserido pelo JS, entrar no fim sem reordenar a lista.
+        comments: {
+          take: 3,
+          orderBy: { createdAt: 'asc' },
+          include: { author: { select: publicUserSelect } },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });

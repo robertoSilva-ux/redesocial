@@ -219,3 +219,81 @@ describe('DELETE /comments/:id (apagar o próprio)', () => {
     expect(malformado.status).toBe(400);
   });
 });
+
+describe('POST /comments/:id/delete (fallback do formulário, sem JavaScript)', () => {
+  it('apaga o próprio comentário e volta para a página anterior', async () => {
+    const { leitor, post } = await cenario();
+    const criado = await leitor.agent.post(`/posts/${post.id}/comments`).set(asJson).send({ content: 'via form' });
+
+    const res = await leitor.agent
+      .post(`/comments/${criado.body.id}/delete`)
+      .set('Referer', `/posts/${post.id}`);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(`/posts/${post.id}`);
+    expect(await prisma.comment.findUnique({ where: { id: criado.body.id } })).toBeNull();
+  });
+
+  it('não deixa apagar comentário de outra pessoa (403) e o comentário fica', async () => {
+    const { autor, leitor, post } = await cenario();
+    const criado = await leitor.agent.post(`/posts/${post.id}/comments`).set(asJson).send({ content: 'meu' });
+
+    const res = await autor.agent.post(`/comments/${criado.body.id}/delete`).type('form');
+
+    expect(res.status).toBe(403);
+    expect(await prisma.comment.findUnique({ where: { id: criado.body.id } })).not.toBeNull();
+  });
+});
+
+describe('feed — UI de comentários (E1b)', () => {
+  /**
+   * O feed mostra posts de quem o usuário SEGUE (o próprio post não aparece
+   * no seu feed — comportamento herdado da Aula 05), então quem lê aqui é
+   * sempre um seguidor do autor.
+   */
+  async function seguidorComPost() {
+    const autor = await registerAndLogin(app, prisma, 'autor@exemplo.com', 'Autor');
+    await autor.agent.post('/posts').type('form').send({ content: 'post do autor' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'post do autor' } });
+
+    const seguidor = await registerAndLogin(app, prisma, 'seguidor@exemplo.com', 'Seguidor');
+    await seguidor.agent.post('/follow').type('form').send({ targetId: autor.userId });
+
+    return { autor, seguidor, post };
+  }
+
+  it('renderiza o formulário de comentário em cada post do feed', async () => {
+    const { seguidor } = await seguidorComPost();
+
+    const res = await seguidor.agent.get('/');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toMatch(/data-comment-form/);
+    expect(res.text).toMatch(/action="\/posts\/\d+\/comments"/);
+  });
+
+  it('mostra os comentários do post com o autor', async () => {
+    const { autor, seguidor, post } = await seguidorComPost();
+    await autor.agent.post(`/posts/${post.id}/comments`).set(asJson).send({ content: 'comentário visível no feed' });
+
+    const res = await seguidor.agent.get('/');
+
+    expect(res.text).toContain('comentário visível no feed');
+    expect(res.text).toContain('data-comment-list');
+    expect(res.text).toContain('Autor'); // nome do autor do comentário
+  });
+
+  it('o botão de apagar aparece só no comentário do próprio usuário', async () => {
+    const { autor, seguidor, post } = await seguidorComPost();
+    await autor.agent.post(`/posts/${post.id}/comments`).set(asJson).send({ content: 'do autor' });
+    await seguidor.agent.post(`/posts/${post.id}/comments`).set(asJson).send({ content: 'do seguidor' });
+
+    const paraSeguidor = await seguidor.agent.get('/');
+
+    // Dois comentários no post, mas o seguidor só pode apagar o dele.
+    expect(paraSeguidor.text).toContain('do autor');
+    expect(paraSeguidor.text).toContain('do seguidor');
+    const deletes = (paraSeguidor.text.match(/data-comment-delete/g) ?? []).length;
+    expect(deletes).toBe(1);
+  });
+});

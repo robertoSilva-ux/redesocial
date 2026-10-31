@@ -64,5 +64,18 @@ export function createCommentRoutes(prisma: PrismaClient): Router {
     }),
   );
 
+  // Fallback sem JavaScript: `<form>` só sabe POST, e o ADR-0004 exige que a
+  // ação funcione sem JS. Mesma autorização, mesmo efeito — a diferença é só
+  // o verbo e o formato da resposta (sempre redirect).
+  router.post(
+    '/comments/:id/delete',
+    requireAuth,
+    requireOwnComment(prisma),
+    asyncHandler(async (req, res) => {
+      await comments.remove(parseIdParam(req.params.id));
+      res.redirect(req.get('referer') ?? '/');
+    }),
+  );
+
   return router;
 }
