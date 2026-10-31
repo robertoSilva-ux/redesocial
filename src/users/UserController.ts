@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { DuplicateFollowError, SelfFollowError, UserNotFoundError, ValidationError } from '../shared/errors.js';
 import { publicUserSelect } from '../shared/selects.js';
+import { encodeFeedCursor, type FeedCursor } from '../shared/pagination.js';
 
 // Criar usuário agora é responsabilidade só do AuthController#register
 // (precisa de senha/hash) — não existe mais um "criar usuário sem senha"
@@ -10,6 +11,9 @@ import { publicUserSelect } from '../shared/selects.js';
 // Sobre `select`: todo retorno que pode virar resposta HTTP usa
 // `publicUserSelect` (src/shared/selects.ts). Nenhum método aqui devolve a
 // linha crua de `User`, porque ela carrega `passwordHash`.
+// Quantos posts por lote do feed (primeira página e cada `fetch` do scroll).
+export const FEED_PAGE_SIZE = 10;
+
 export class UserController {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -66,26 +70,47 @@ export class UserController {
   // follower" — sem precisar buscar a lista de ids manualmente antes.
   //
   // A view do feed lê, por post: `_count.likes`, `_count.comments` e
-  // `likedByMe` (ver src/views/feed.ejs). `likedByMe` sai de UMA consulta
-  // para todos os posts da página — o mesmo truque que `listOthers` usa
-  // para `isFollowing`, e não um `findUnique` por post (N+1).
-  async feed(userId: number) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+  // `likedByMe`; e, por comentário listado, `_count.likes` e `likedByMe`. As
+  // curtidas saem em DUAS consultas por página (uma para posts, outra para os
+  // comentários da página) — não um `findUnique` por item (N+1).
+  //
+  // `feedPage` é o único lugar que monta essa consulta: a primeira página
+  // (`GET /`) e o fragmento do scroll infinito (`GET /feed/more`) chamam este
+  // método e só diferem no cursor. Se fossem duas consultas, elas divergiriam
+  // (ADR-0010).
+  async feedPage(userId: number, options: { cursor?: FeedCursor; limit?: number } = {}) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
     if (!user) {
       throw new UserNotFoundError(userId);
     }
 
-    const posts = await this.prisma.post.findMany({
-      where: { author: { followers: { some: { followerId: userId } } } },
+    const limit = Math.min(Math.max(options.limit ?? FEED_PAGE_SIZE, 1), 50);
+    const { cursor } = options;
+
+    const where: Prisma.PostWhereInput = {
+      author: { followers: { some: { followerId: userId } } },
+      // Cursor composto: "posts mais antigos que o último lido", com `id` como
+      // desempate quando o `createdAt` empata na resolução de segundo.
+      ...(cursor
+        ? {
+            OR: [
+              { createdAt: { lt: cursor.createdAt } },
+              { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+            ],
+          }
+        : {}),
+    };
+
+    const rows = await this.prisma.post.findMany({
+      where,
       include: {
         author: { select: publicUserSelect },
         tags: true,
         images: { orderBy: { order: 'asc' } },
         _count: { select: { likes: true, comments: true } },
         // Os 3 primeiros comentários de cada post (`take` em relação aninhada
-        // vale por post, não no total). O feed mostra a conversa começando;
-        // a página do post mostra todos. Ordem cronológica para o comentário
-        // novo, inserido pelo JS, entrar no fim sem reordenar a lista.
+        // vale por post). Ordem cronológica para o comentário novo, inserido
+        // pelo JS, entrar no fim sem reordenar a lista.
         comments: {
           take: 3,
           orderBy: { createdAt: 'asc' },
@@ -95,8 +120,16 @@ export class UserController {
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      // Um a mais que o limite: a existência do excedente é o que diz se há
+      // próxima página, sem precisar de um `count()` separado.
+      take: limit + 1,
     });
+
+    const hasMore = rows.length > limit;
+    const posts = hasMore ? rows.slice(0, limit) : rows;
+    const last = posts[posts.length - 1];
+    const nextCursor = hasMore && last ? encodeFeedCursor(last) : null;
 
     const myLikes = await this.prisma.like.findMany({
       where: { userId, postId: { in: posts.map((post) => post.id) } },
@@ -104,10 +137,6 @@ export class UserController {
     });
     const likedPostIds = new Set(myLikes.map((like) => like.postId));
 
-    // Mesmo truque para os comentários do feed: UMA consulta para todos, em vez
-    // de um `findUnique` por comentário. Esta consulta é duplicada em
-    // `PostController.getForView` de propósito: módulos de feature não se
-    // importam entre si (ADR-0001) e a colaboração é pelo Prisma.
     const commentIds = posts.flatMap((post) => post.comments.map((comment) => comment.id));
     const myCommentLikes = commentIds.length
       ? await this.prisma.like.findMany({
@@ -117,14 +146,24 @@ export class UserController {
       : [];
     const likedCommentIds = new Set(myCommentLikes.map((like) => like.commentId));
 
-    return posts.map((post) => ({
-      ...post,
-      likedByMe: likedPostIds.has(post.id),
-      comments: post.comments.map((comment) => ({
-        ...comment,
-        likedByMe: likedCommentIds.has(comment.id),
+    return {
+      posts: posts.map((post) => ({
+        ...post,
+        likedByMe: likedPostIds.has(post.id),
+        comments: post.comments.map((comment) => ({
+          ...comment,
+          likedByMe: likedCommentIds.has(comment.id),
+        })),
       })),
-    }));
+      nextCursor,
+    };
+  }
+
+  // Primeira página do feed — usada pela view e pela API de leitura
+  // (`/api/users/:id/feed`), que continua devolvendo só a lista.
+  async feed(userId: number) {
+    const { posts } = await this.feedPage(userId);
+    return posts;
   }
 
   // Lista para a tela inicial sugerir quem seguir: todo mundo, exceto eu

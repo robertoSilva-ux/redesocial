@@ -9,7 +9,7 @@ docs/
 ├── BACKLOG.md             especificação do Trabalho II em incrementos (E0..E7)
 ├── adr/                   Architecture Decision Records (um arquivo por decisão)
 │   ├── README.md          índice, convenção e template
-│   ├── 0001 ... 0009      decisões aceitas
+│   ├── 0001 ... 0010      decisões aceitas
 └── arquitetura/
     └── c4.md              diagramas C4: contexto (1), containers (2) e componentes (3)
 ```
@@ -68,8 +68,9 @@ Registradas aqui para não se perderem; viram ADR quando forem decididas.
   (ADR-0002). Se a decisão for separar, o ADR-0002 é substituído.
 - **`PostImage`** — decidido no ADR-0009: tabela própria, migrando `Post.imageUrl` com passo de
   dados. `Image` continua sendo "arquivo do usuário" e `Image.postId` fica como legado do Exercício 1.
-- **Feed do scroll infinito**: fragmento HTML renderizado no servidor × JSON + template no
-  cliente (ADR-0005 já registra que o cursor conviverá com `page/pageSize`).
+- **Feed do scroll infinito**: decidido no ADR-0010 — fragmento HTML renderizado no servidor,
+  cursor composto (`createdAt` + `id`) via header `X-Next-Cursor`. Convivência com `page/pageSize`
+  da API de leitura já registrada no ADR-0005.
 - **Ambiente**: resolvido no ADR-0008 (override global de `better-sqlite3` + lock regenerado).
   Sintoma de regressão: suíte inteira vermelha com `Module did not self-register` — conferir com
   `npm ls better-sqlite3` (duas cópias = override perdido).

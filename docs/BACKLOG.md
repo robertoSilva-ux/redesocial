@@ -17,8 +17,8 @@ item 1 já entregue.
 | E1 | 3 | comentários em post: escrita ✅, autorização ✅, UI via `fetch` ✅ | atividade 2 | E0b |
 | E2 | 3 | curtida em comentário ✅ + otimista/rollback nos comentários ✅ | atividades 3 e 8 | E1a |
 | E3 | 3 | múltiplas fotos: decisão ✅, migração com dados ✅, `upload.array` ✅ | atividade 4 | E2c |
-| E4 | 1 | carrossel no feed | atividade 5 | E3c |
-| E5 | 3 | feed paginado por cursor + scroll infinito | atividade 6 | E4 |
+| E4 | 1 | carrossel no feed ✅ | atividade 5 | E3c |
+| E5 | 3 | feed por cursor ✅ + scroll infinito ✅ (fragmento HTML) | atividade 6 | E4 |
 | E6 | 3 | editar comentário, ordenar por curtidas, contador de novidades | atividades 7, 9, 10 | E2b |
 | E7 | 3 | fechamento: README, cobertura, revisão e roteiro da gravação | critérios de avaliação | E5c + E6 |
 
@@ -174,18 +174,38 @@ repo). 6 testes novos em `post-images.test.ts` (total 126). No servidor real: 3 
 com `order` 0/1/2 e URLs distintas; 6 arquivos → 400; feed mostra a 1ª foto e "+ 1 foto(s)"; página
 do post mostra as duas na ordem.
 
-## E4 — carrossel (atividade 5)
+## E4 — carrossel (atividade 5) — ✅ concluído em 31/10
 
-**Escopo.** Partial reaproveitado por feed e página do post + `carousel.js` (setas, indicadores,
-teclado, `aria-live`), só quando `images.length > 1`.
+**Feito.** `views/partials/carousel.ejs` (0 foto → nada; 1 → `<img>` como antes; 2+ → carrossel) e
+`public/carousel.js` em JS puro: setas, indicadores, navegação circular, teclado (← →), `aria-live`
+anunciando "Foto N de M" e `aria-hidden` nos slides fora de vista. O estado vive em `data-index` no
+nó, não em closure. Dois detalhes de layout que importam: o carrossel foi colocado **fora** do `<a>`
+do post (botão dentro de link é inválido e o clique navegaria), e os botões são `type="button"`.
+
+**Provado no navegador:** `[data-carousel]` no feed, 2 slides, 2 dots; next → index 1,
+`translateX(-100%)`, "Foto 2 de 2", `aria-current` no dot certo; next de novo volta ao 0 (circular);
+`ArrowRight`/`ArrowLeft` funcionam; URL não muda e **0 requisições novas** (é tudo cliente).
+Teste de view: carrossel presente com 2 fotos e ausente com 1 (127 testes).
 **Aceite.** HTML com controles apenas com mais de uma foto; navegar não dispara requisição.
 
-## E5 — feed paginado e scroll infinito (atividade 6)
+## E5 — feed paginado e scroll infinito (atividade 6) — ✅ concluído em 31/10
 
 **Bloqueado até a decisão “fragmento HTML × JSON”** (cartão E5a → ADR-0010). Cursor já é decisão
 tomada (ADR-0005): `?cursor=&limit=`, ordenação `createdAt desc, id desc`.
-**Escopo.** Extrair `partials/postCard.ejs`, `GET /api/feed`, `IntersectionObserver` + append no
-`feed.js` com guarda de fim de lista e erro de rede.
+**Feito (E5b).** ADR-0010 (fragmento HTML). `partials/postCard.ejs` extraído — o markup do card
+passou a existir **uma** vez, usado pelo `GET /` e pelo endpoint. `UserController.feedPage(userId,
+{cursor, limit})` é a consulta única: cursor **composto** (`createdAt` + `id`, em base64url),
+`orderBy [{createdAt: desc}, {id: desc}]`, `take: limit + 1` para saber se há próxima página sem
+`count()`. `GET /` passa `nextCursor` para o sentinela; `GET /feed/more?cursor=&limit=` devolve o
+fragmento com `X-Next-Cursor` no header (ausente = fim). 7 testes novos (total 134), incluindo o que
+cria posts **empatados no mesmo segundo** (o caso em que só data quebraria) e verifica que as duas
+páginas não repetem nem omitem id.
+
+**Feito (E5c).** `IntersectionObserver` no sentinela (`rootMargin: 200px`), `insertAdjacentHTML`
+antes dele, cursor atualizado pelo header, `finally` reabilitando em erro e mensagem visível. No
+navegador: 10 cards → scroll → **15 cards**, sentinela removido, aviso de fim aparecendo, URL intacta
+e **1 requisição** a `/feed/more`. E o teste que fecha o argumento do ADR-0004: curtir um card que
+veio do fragmento funcionou sem listener novo (`liked=1`, contagem 1).
 **Aceite.** Páginas consecutivas sem repetir nem omitir; DevTools mostra só `fetch`; curtir e
 comentar posts carregados por scroll funcionam sem listener novo (é o que prova a delegação de
 eventos da discussão item 4).

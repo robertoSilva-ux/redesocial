@@ -144,3 +144,43 @@ export function buildPage<T>(rows: T[], total: number, page: PageRequest): Pagin
     },
   };
 }
+
+/**
+ * Cursor do feed (item 6 do Trabalho II, ADR-0010).
+ *
+ * Por que cursor composto e não `page/pageSize`: com `offset`, um post novo
+ * publicado no topo empurra tudo uma posição — a página 2 repete um item que
+ * já apareceu na 1. O cursor aponta para o último item lido, então a próxima
+ * consulta continua exatamente de onde parou.
+ *
+ * O par (`createdAt`, `id`) é necessário porque `createdAt` no SQLite tem
+ * resolução de segundo: vários posts empatam, e o `id` é o desempate estável
+ * (o mesmo critério do `buildOrderBy`).
+ */
+export interface FeedCursor {
+  createdAt: Date;
+  id: number;
+}
+
+export function encodeFeedCursor(post: { createdAt: Date; id: number }): string {
+  return Buffer.from(`${post.createdAt.toISOString()}|${post.id}`, 'utf8').toString('base64url');
+}
+
+export function decodeFeedCursor(raw: unknown): FeedCursor | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (typeof raw !== 'string' || raw.length === 0) {
+    throw new ValidationError('"cursor" inválido');
+  }
+
+  const texto = Buffer.from(raw, 'base64url').toString('utf8');
+  const [iso, idTexto] = texto.split('|');
+  const createdAt = new Date(iso ?? '');
+  const id = Number(idTexto);
+
+  if (Number.isNaN(createdAt.getTime()) || !Number.isInteger(id) || id <= 0) {
+    throw new ValidationError('"cursor" inválido');
+  }
+  return { createdAt, id };
+}

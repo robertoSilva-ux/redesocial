@@ -47,6 +47,19 @@
           <%- include('partials/postCard', { post, currentUser }) %>
         <% }) %>
 
+        <%# Sentinela do scroll infinito (item 6 / ADR-0010): quando este nó se
+            aproxima da viewport, feed.js busca o próximo lote em /feed/more.
+            `data-next-cursor` vazio = não há mais nada. %>
+        <div
+          id="feed-sentinel"
+          data-next-cursor="<%= nextCursor ?? '' %>"
+          aria-hidden="true"
+          class="h-2"
+        ></div>
+
+        <p id="feed-end" data-feed-end class="hidden text-center text-sm text-slate-400 py-4">
+          Você chegou ao fim do feed.
+        </p>
       </section>
 
       <aside class="flex flex-col gap-3">

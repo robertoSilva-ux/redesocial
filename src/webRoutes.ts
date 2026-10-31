@@ -7,6 +7,9 @@ import { requireAuth, requireOwnPost } from './auth/middleware.js';
 import { MAX_POST_IMAGES, upload } from './uploads/upload.js';
 import type { ImageStorage } from './uploads/storage.js';
 import { asyncHandler, parseIdParam } from './shared/http.js';
+import { decodeFeedCursor } from './shared/pagination.js';
+import ejs from 'ejs';
+import path from 'node:path';
 import { DuplicateEmailError, InvalidCredentialsError, ValidationError } from './shared/errors.js';
 
 // Rotas que servem HTML (EJS) e dependem de sessão — diferente de
@@ -83,12 +86,52 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     requireAuth,
     asyncHandler(async (req, res) => {
       const currentUserId = req.session.userId!;
-      const [currentUser, feed, others] = await Promise.all([
+      const [currentUser, pagina, others] = await Promise.all([
         userController.get(currentUserId),
-        userController.feed(currentUserId),
+        userController.feedPage(currentUserId),
         userController.listOthers(currentUserId),
       ]);
-      res.render('feed', { currentUser, feed, others });
+      // A primeira página já informa o cursor: é o que o scroll infinito usa
+      // para continuar de onde a renderização inicial parou (ADR-0010).
+      res.render('feed', { currentUser, feed: pagina.posts, others, nextCursor: pagina.nextCursor });
+    }),
+  );
+
+  /**
+   * Próximo lote do feed — FRAGMENTO HTML, não JSON (ADR-0010).
+   *
+   * Responde o mesmo markup de `partials/postCard.ejs` que o `GET /` renderiza,
+   * e devolve o cursor do lote seguinte no header `X-Next-Cursor`
+   * (ausente = fim da lista). O cliente insere com `insertAdjacentHTML` e a
+   * delegação de eventos do `feed.js` já cobre os cards novos.
+   */
+  router.get(
+    '/feed/more',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const currentUserId = req.session.userId!;
+      const cursor = decodeFeedCursor(req.query.cursor);
+      const limite = Number(req.query.limit ?? 10);
+      const limit = Number.isFinite(limite) ? limite : 10;
+
+      const [pagina, currentUser] = await Promise.all([
+        userController.feedPage(currentUserId, { cursor, limit }),
+        userController.get(currentUserId),
+      ]);
+
+      const html = await Promise.all(
+        pagina.posts.map((post) =>
+          ejs.renderFile(path.join(import.meta.dirname, 'views', 'partials', 'postCard.ejs'), {
+            post,
+            currentUser,
+          }),
+        ),
+      );
+
+      if (pagina.nextCursor) {
+        res.setHeader('X-Next-Cursor', pagina.nextCursor);
+      }
+      res.type('html').send(html.join('\n'));
     }),
   );
 

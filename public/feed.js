@@ -268,6 +268,96 @@
   }
 
   /** Mensagem de erro curta, dentro de `alvo` (o form, ou a linha do comentário). */
+  // ------------------------------------------------------- scroll infinito
+  /*
+   * O servidor renderiza a primeira página e deixa o cursor no sentinela
+   * (`#feed-sentinel[data-next-cursor]`, ADR-0010). Quando o sentinela chega
+   * perto da viewport, pedimos o próximo lote — que é HTML pronto — e
+   * inserimos antes dele. O cursor seguinte vem no header `X-Next-Cursor`;
+   * ausente = fim da lista.
+   *
+   * `IntersectionObserver` em vez de ouvir `scroll`: não precisa calcular
+   * posição, funciona com qualquer altura de conteúdo e não roda a cada pixel
+   * rolado.
+   *
+   * Os cards inseridos NÃO precisam de listener novo: a delegação em `#feed`
+   * já cobre curtir, comentar, apagar e curtir comentário.
+   */
+  const sentinela = document.getElementById('feed-sentinel');
+
+  if (sentinela) {
+    let carregando = false;
+    let acabou = !sentinela.dataset.nextCursor;
+    const fim = document.querySelector('[data-feed-end]');
+
+    const observer = new IntersectionObserver(
+      (entradas) => {
+        if (!entradas.some((entrada) => entrada.isIntersecting)) return;
+        if (carregando || acabou) return;
+        carregarMais();
+      },
+      { rootMargin: '200px' }, // começa a buscar antes de chegar no fim
+    );
+
+    observer.observe(sentinela);
+    if (acabou) finalizar();
+
+    async function carregarMais() {
+      carregando = true;
+      sentinela.dataset.carregando = '1';
+
+      try {
+        const url = `/feed/more?cursor=${encodeURIComponent(sentinela.dataset.nextCursor)}`;
+        const res = await fetch(url, {
+          credentials: 'same-origin',
+          headers: { Accept: 'text/html' },
+          signal: AbortSignal.timeout(8000),
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const html = await res.text();
+        // Conteúdo renderizado no servidor; `insertAdjacentHTML` aceita a
+        // string, e o EJS já escapou o que veio de usuário (ADR-0010).
+        sentinela.insertAdjacentHTML('beforebegin', html);
+
+        const proximo = res.headers.get('X-Next-Cursor');
+        if (proximo) {
+          sentinela.dataset.nextCursor = proximo;
+        } else {
+          acabou = true;
+          finalizar();
+        }
+      } catch (err) {
+        // Não marca `acabou`: o próximo scroll tenta de novo.
+        mostrarAvisoFeed(
+          err.name === 'AbortError' ? 'O feed demorou demais para responder.' : 'Não foi possível carregar mais posts.',
+        );
+      } finally {
+        carregando = false;
+        delete sentinela.dataset.carregando;
+      }
+    }
+
+    function finalizar() {
+      observer.disconnect();
+      sentinela.remove();
+      if (fim) fim.classList.remove('hidden');
+    }
+  }
+
+  function mostrarAvisoFeed(mensagem) {
+    const anterior = document.querySelector('[data-feed-error]');
+    if (anterior) anterior.remove();
+
+    const aviso = document.createElement('p');
+    aviso.dataset.feedError = '';
+    aviso.className = 'text-center text-sm text-red-600 py-2';
+    aviso.textContent = mensagem;
+    sentinela.insertAdjacentElement('beforebegin', aviso);
+    setTimeout(() => aviso.remove(), 4000);
+  }
+
   function showError(form, message, alvo = form) {
     alvo.querySelector('[data-like-error]')?.remove();
     const note = document.createElement('p');

@@ -19,6 +19,7 @@ reutilizada** — ADR apagado deixa o número queimado.
 | [0007](0007-upload-atraves-de-imagestorage.md) | Upload atrás da porta `ImageStorage` (local × S3 pelo `.env`) | Aceita | 2026-10-14 |
 | [0008](0008-better-sqlite3-pin-global.md) | `better-sqlite3` fixado no override global (prebuilds, sem script de build) | Aceita | 2026-10-31 |
 | [0009](0009-postimage-tabela-propria.md) | `PostImage` como tabela própria (1:N com `order`), migrando `Post.imageUrl` com passo de dados | Aceita | 2026-10-31 |
+| [0010](0010-feed-fragmento-html.md) | Feed paginado devolve fragmento HTML (não JSON + template no cliente) | Aceita | 2026-10-31 |
 
 ## Template
 
