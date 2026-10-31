@@ -60,8 +60,7 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
         // É isso que "loga" o usuário: guardar o id na sessão. A partir
         // daqui, toda requisição desse navegador vai carregar
         // `req.session.userId` (via cookie) até o logout ou o cookie expirar.
-        req.session.userId = user.id; 
-        // req.session.user = user; // Ensure the `user` type matches the extended session type
+        req.session.userId = user.id;
         res.redirect('/');
       } catch (err) {
         if (err instanceof InvalidCredentialsError) {
@@ -119,9 +118,10 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     asyncHandler(async (req, res) => {
       try {
         let imageUrl: string | undefined;
-        // o parse do arquivo fica disponivel em req.file
+        // O parse do arquivo fica disponível em `req.file`. O binário vai
+        // direto do buffer para o `ImageStorage` — nunca é logado (o buffer
+        // inteiro no stdout foi um resquício de depuração, cartão E0c).
         if (req.file) {
-          console.log({ file: req.file })
           imageUrl = await imageStorage.upload(req.file);
         }
         const tags = typeof req.body.tags === 'string'

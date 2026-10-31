@@ -50,9 +50,29 @@ Verificado depois: **100 testes**, `tsc` limpo, override do `better-sqlite3` int
 servidor real (login, feed, `/api/posts`, comentário por formulário e upload multipart com gravação
 em `uploads/`).
 
-O smoke revelou um defeito que a suíte não cobre: `MulterError` cai em **500**. Enviar um campo de
-arquivo inesperado (`images` quando a rota espera `image`) ou um arquivo acima de 5 MB devolve
-"Erro interno do servidor" em vez de 400/413 — registrado no cartão **E0c**.
+O smoke revelou um defeito que a suíte não cobria: `MulterError` caía em **500**. Enviar um campo de
+arquivo inesperado (`images` quando a rota espera `image`) ou um arquivo acima de 5 MB devolvia
+"Erro interno do servidor" em vez de 400/413 — fechado no cartão **E0c**.
+
+## E0c — upload recusado respondia 500 — ✅ concluído em 31/10
+
+| Caso | Antes | Agora |
+| --- | --- | --- |
+| arquivo acima de 5 MB | 500 | **413** "Arquivo maior que o limite de 5 MB" |
+| campo de arquivo inesperado | 500 | **400** "Campo de arquivo não aceito por esta rota" |
+| MIME não permitido | 500 | **400** "Formato de imagem não suportado" |
+| upload válido | 302 | 302 (sem regressão) |
+
+Causa: o `MulterError` do multer 2 traz `code` e **não** traz `status`, então não entrava nem no mapa
+de erros de domínio nem no do body-parser. O `errorHandler` ganhou um mapa `code → status` + mensagem
+(`MAX_IMAGE_BYTES` exportado do `upload.ts`, para o número não existir em dois lugares), e o
+`fileFilter` passou a recusar MIME com `ValidationError` em vez de `Error` cru. 5 testes novos em
+`test/integration/upload.errors.test.ts` (105 no total); um teste antigo de `posts.routes.test.ts`
+afirmava o 500 e foi corrigido.
+
+**Dívida que o E0c não resolveu:** upload **válido** com post inválido (`content` vazio) devolve 400 e
+**deixa o arquivo gravado** em `uploads/` — confirmado no smoke. Consertar exige `remove()` na porta
+`ImageStorage` (que hoje só tem `upload`), isso é mudança de decisão (ADR-0007) e virou o cartão **E0d**.
 
 ## E0b — hardening — ✅ concluído em 31/10
 

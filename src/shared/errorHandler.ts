@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import { MAX_IMAGE_BYTES } from '../uploads/upload.js';
 import {
   DuplicateEmailError,
   DuplicateFollowError,
@@ -38,6 +39,46 @@ function clientErrorStatus(err: Error): number | undefined {
   return typeof value === 'number' && value >= 400 && value < 500 ? value : undefined;
 }
 
+// ---------------------------------------------------------------------------
+// Erros do Multer (upload). O multer 2 **não** anexa `status` ao erro: ele
+// traz só `code` (LIMIT_FILE_SIZE, LIMIT_UNEXPECTED_FILE, ...). Sem este mapa,
+// todo upload recusado caía no 500 genérico — arquivo grande respondia
+// "Erro interno do servidor" em vez de 413 (achado do cartão E0c).
+// ---------------------------------------------------------------------------
+const MULTER_LIMIT_MB = Math.round(MAX_IMAGE_BYTES / (1024 * 1024));
+
+const MULTER_STATUS: Record<string, number> = {
+  LIMIT_FILE_SIZE: 413,
+  LIMIT_FILE_COUNT: 400,
+  LIMIT_UNEXPECTED_FILE: 400,
+  LIMIT_FIELD_KEY: 400,
+  LIMIT_FIELD_VALUE: 400,
+  LIMIT_FIELD_COUNT: 400,
+  LIMIT_PART_COUNT: 400,
+};
+
+const MULTER_MESSAGE: Record<string, string> = {
+  LIMIT_FILE_SIZE: `Arquivo maior que o limite de ${MULTER_LIMIT_MB} MB`,
+  LIMIT_UNEXPECTED_FILE: 'Campo de arquivo não aceito por esta rota',
+  LIMIT_FILE_COUNT: 'Arquivos demais para esta rota',
+};
+
+interface MulterErrorLike extends Error {
+  code?: string;
+  field?: string;
+}
+
+function multerFailure(err: Error): { status: number; message: string } | undefined {
+  if (err.name !== 'MulterError') {
+    return undefined;
+  }
+  const { code } = err as MulterErrorLike;
+  return {
+    status: (code ? MULTER_STATUS[code] : undefined) ?? 400,
+    message: (code ? MULTER_MESSAGE[code] : undefined) ?? 'Requisição de upload inválida',
+  };
+}
+
 // Os 4 parâmetros são obrigatórios: é assim que o Express reconhece uma
 // função como error handler (em vez de um middleware comum).
 //
@@ -51,7 +92,8 @@ function clientErrorStatus(err: Error): number | undefined {
 //  2. o header `Accept`, para as rotas HTML que também são chamadas por fetch.
 export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction): void {
   const knownStatus = STATUS_BY_ERROR.get(err.constructor);
-  const status = knownStatus ?? clientErrorStatus(err) ?? 500;
+  const uploadFailure = multerFailure(err);
+  const status = uploadFailure?.status ?? knownStatus ?? clientErrorStatus(err) ?? 500;
 
   const isParseFailure = (err as BodyParserError).type === 'entity.parse.failed';
 
@@ -63,9 +105,8 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
   }
   const message = isParseFailure
     ? 'JSON inválido no corpo da requisição'
-    : status >= 500
-      ? 'Erro interno do servidor'
-      : err.message;
+    : (uploadFailure?.message ??
+      (status >= 500 ? 'Erro interno do servidor' : err.message));
 
   const wantsHtml = !(req.path ?? '').startsWith('/api') && req.accepts(['html', 'json']) === 'html';
 

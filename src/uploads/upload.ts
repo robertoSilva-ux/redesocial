@@ -1,6 +1,11 @@
 import multer from 'multer';
+import { ValidationError } from '../shared/errors.js';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+// Limite em bytes, exportado para o error handler poder dizer o limite na
+// mensagem (e para não existirem dois números divergentes no projeto).
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 // `memoryStorage`: o Multer entrega o arquivo inteiro em `req.file.buffer`
 // (RAM) em vez de gravá-lo em disco sozinho — é exatamente o formato que
@@ -10,10 +15,13 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 // para uma aula, com o limite de 5MB abaixo, é seguro.
 export const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: MAX_IMAGE_BYTES },
   fileFilter(_req, file, callback) {
     if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-      callback(new Error('Formato de imagem não suportado (use JPEG, PNG ou WebP)'));
+      // `ValidationError` (e não `Error`) de propósito: é erro do cliente, e o
+      // error handler mapeia essa classe para 400. Com `Error` cru, um upload
+      // com MIME errado virava 500 "erro interno" (achado do cartão E0c).
+      callback(new ValidationError('Formato de imagem não suportado (use JPEG, PNG ou WebP)'));
       return;
     }
     callback(null, true);

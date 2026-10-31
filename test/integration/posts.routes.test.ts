@@ -63,7 +63,9 @@ describe('POST /posts (autenticado)', () => {
       .field('content', 'Post com anexo inválido')
       .attach('image', Buffer.from('não é imagem'), { filename: 'arquivo.txt', contentType: 'text/plain' });
 
-    expect(res.status).toBe(500);
+    // Era 500 antes do E0c: o fileFilter lançava `Error` cru e o error handler
+    // jogava no genérico. MIME não permitido é erro do cliente → 400.
+    expect(res.status).toBe(400);
     expect(imageStorage.uploads).toHaveLength(0);
   });
 
