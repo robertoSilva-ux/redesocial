@@ -5,9 +5,7 @@
   "type": "module",
   "description": "Aula 05 - frontend EJS, autenticação (bcrypt + express-session), middleware de autenticação/autorização e upload de imagens (Multer + S3) sobre o projeto de persistência da Aula 04.",
   "overrides": {
-    "@prisma/adapter-better-sqlite3": {
-      "better-sqlite3": "^13.0.3"
-    }
+    "better-sqlite3": "^13.0.3"
   },
   "scripts": {
     "postinstall": "prisma generate",
