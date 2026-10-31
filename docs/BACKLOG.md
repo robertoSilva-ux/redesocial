@@ -121,11 +121,18 @@ redirecionam. 3 testes de view novos (total 110) e verificação no **navegador 
 apagar sem reload, contador de 0 → 1 → 0.
 **Risco.** `Comment` tem `parentId` (respostas): decidir se a UI já cria resposta em thread ou se fica para depois — registrar a decisão, não deixar meio-feito.
 
-## E2 — curtida em comentário (atividades 3 e 8)
+## E2 — curtida em comentário (atividades 3 e 8) — E2a ✅ concluído em 31/10
 
 **Escopo.** `toggleCommentLike` no `LikeController` (sem migração: `Like.commentId` + `@@unique` já
 existem), rotas `POST`/`DELETE /comments/:id/like`, botão por comentário e `feed.js` generalizado
 para os dois alvos.
+**Feito (E2a).** `toggleCommentLike`/`unlikeComment`/`commentLikeState` no `LikeController` e
+`POST`/`DELETE /comments/:id/like` em `likes/likeRoutes.ts` — **sem migração**: a tabela `Like` já
+aceitava `commentId` com `@@unique([userId, commentId])` e CHECK de alvo exclusivo (ADR-0002).
+`CommentNotFoundError` mapeado para 404. 7 testes novos (`comment-likes.routes.test.ts`, total 117);
+provado no servidor real: toggle 1→0, dois usuários somam 2, DELETE idempotente, 302 sem sessão, 404
+inexistente, 400 id malformado, e no banco o like aparece com `postId` nulo e `commentId` preenchido.
+
 **Aceite.** Toggle, contagem isolada por alvo, 404, auth, duplicidade (`P2002`), otimista com
 rollback verificável com rede lenta.
 

@@ -47,5 +47,35 @@ export function createLikeRoutes(prisma: PrismaClient): Router {
     }),
   );
 
+  // -------------------------------------------------------- curtida de comentário
+  // Mesmo contrato do post: POST alterna (formulário e fetch), DELETE descurte
+  // de forma idempotente (só o cliente JS usa).
+
+  router.post(
+    '/comments/:id/like',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const state = await likeController.toggleCommentLike(
+        req.session.userId!,
+        parseIdParam(req.params.id),
+      );
+
+      if (wantsJson(req)) {
+        res.json(state);
+        return;
+      }
+      res.redirect(req.get('referer') ?? '/');
+    }),
+  );
+
+  router.delete(
+    '/comments/:id/like',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const state = await likeController.unlikeComment(req.session.userId!, parseIdParam(req.params.id));
+      res.json(state);
+    }),
+  );
+
   return router;
 }

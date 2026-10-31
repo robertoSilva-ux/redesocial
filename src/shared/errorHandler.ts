@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { MAX_IMAGE_BYTES } from '../uploads/upload.js';
 import {
+  CommentNotFoundError,
   DuplicateEmailError,
   DuplicateFollowError,
   InvalidCredentialsError,
@@ -17,6 +18,7 @@ const STATUS_BY_ERROR = new Map<Function, number>([
   [InvalidCredentialsError, 401],
   [UserNotFoundError, 404],
   [PostNotFoundError, 404],
+  [CommentNotFoundError, 404],
   [TagNotFoundError, 404],
   [DuplicateFollowError, 409],
   [DuplicateEmailError, 409],

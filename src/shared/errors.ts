@@ -10,6 +10,12 @@ export class PostNotFoundError extends Error {
   }
 }
 
+export class CommentNotFoundError extends Error {
+  constructor(id: number) {
+    super(`Comentário ${id} não encontrado`);
+  }
+}
+
 export class TagNotFoundError extends Error {
   constructor(name: string) {
     super(`Tag "${name}" não encontrada`);

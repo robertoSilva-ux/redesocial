@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { Prisma } from '@prisma/client';
-import { PostNotFoundError } from '../shared/errors.js';
+import { CommentNotFoundError, PostNotFoundError } from '../shared/errors.js';
 import { buildOrderBy, buildPage, parsePagination, SORTABLE_FIELDS } from '../shared/pagination.js';
 
 export class LikeController {
@@ -69,6 +69,64 @@ export class LikeController {
     await this.assertPostExists(postId);
     await this.prisma.like.deleteMany({ where: { userId, postId } });
     return this.postLikeState(userId, postId);
+  }
+
+  /**
+   * Alterna curtir/descurtir um COMENTÁRIO.
+   *
+   * Mesma mecânica do post porque a tabela é a mesma (ADR-0002): o alvo é
+   * exclusivo (post OU comentário, garantido por CHECK na migration), então o
+   * que muda aqui é só qual coluna entra no `where` e na contagem.
+   */
+  async toggleCommentLike(userId: number, commentId: number) {
+    await this.assertCommentExists(commentId);
+
+    const existing = await this.prisma.like.findUnique({
+      where: { userId_commentId: { userId, commentId } },
+    });
+
+    if (existing) {
+      await this.prisma.like.delete({ where: { id: existing.id } });
+    } else {
+      try {
+        await this.prisma.like.create({ data: { userId, commentId } });
+      } catch (err) {
+        // Corrida de duplo clique esbarra no @@unique([userId, commentId]).
+        // O estado que o usuário queria já vale — engolir o P2002 é melhor
+        // que devolver 409 (mesmo tratamento da curtida em post).
+        if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002')) {
+          throw err;
+        }
+      }
+    }
+
+    return this.commentLikeState(userId, commentId);
+  }
+
+  // Idempotente: retry do cliente não vira erro nem "descurtir duas vezes".
+  async unlikeComment(userId: number, commentId: number) {
+    await this.assertCommentExists(commentId);
+    await this.prisma.like.deleteMany({ where: { userId, commentId } });
+    return this.commentLikeState(userId, commentId);
+  }
+
+  private async commentLikeState(userId: number, commentId: number) {
+    const [likeCount, mine] = await Promise.all([
+      // Curtidas de post têm `commentId` nulo e ficam de fora da contagem.
+      this.prisma.like.count({ where: { commentId } }),
+      this.prisma.like.findUnique({ where: { userId_commentId: { userId, commentId } } }),
+    ]);
+    return { liked: mine !== null, likeCount };
+  }
+
+  private async assertCommentExists(commentId: number) {
+    if (!Number.isInteger(commentId) || commentId <= 0) {
+      throw new CommentNotFoundError(commentId);
+    }
+    const comment = await this.prisma.comment.findUnique({ where: { id: commentId }, select: { id: true } });
+    if (!comment) {
+      throw new CommentNotFoundError(commentId);
+    }
   }
 
   private async postLikeState(userId: number, postId: number) {
