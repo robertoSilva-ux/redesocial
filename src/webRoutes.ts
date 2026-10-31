@@ -6,7 +6,7 @@ import { PostController } from './posts/PostController.js';
 import { requireAuth, requireOwnPost } from './auth/middleware.js';
 import { upload } from './uploads/upload.js';
 import type { ImageStorage } from './uploads/storage.js';
-import { asyncHandler } from './shared/http.js';
+import { asyncHandler, parseIdParam } from './shared/http.js';
 import { DuplicateEmailError, InvalidCredentialsError, ValidationError } from './shared/errors.js';
 
 // Rotas que servem HTML (EJS) e dependem de sessão — diferente de
@@ -96,6 +96,21 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
   router.get('/posts/new', requireAuth, (req, res) => {
     res.render('newPost', { error: null });
   });
+
+  // Página do post. Fica DEPOIS de `/posts/new` de propósito: `new` casaria
+  // com `:id` e viraria 400 (id não numérico) em vez de abrir o formulário.
+  router.get(
+    '/posts/:id',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const currentUserId = req.session.userId!;
+      const [currentUser, post] = await Promise.all([
+        userController.get(currentUserId),
+        postController.getForView(parseIdParam(req.params.id), currentUserId),
+      ]);
+      res.render('post', { currentUser, post, error: null });
+    }),
+  );
 
   router.post(
     '/posts',

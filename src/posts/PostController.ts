@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { PostNotFoundError, TagNotFoundError, UserNotFoundError, ValidationError } from '../shared/errors.js';
 import { buildOrderBy, buildPage, parsePagination, SORTABLE_FIELDS } from '../shared/pagination.js';
+import { publicUserSelect } from '../shared/selects.js';
 
 export class PostController {
   constructor(private readonly prisma: PrismaClient) {}
@@ -42,14 +43,14 @@ export class PostController {
           })),
         },
       },
-      include: { author: true, tags: true },
+      include: { author: { select: publicUserSelect }, tags: true },
     });
   }
 
   async get(id: number) {
     const post = await this.prisma.post.findUnique({
       where: { id },
-      include: { author: true, tags: true },
+      include: { author: { select: publicUserSelect }, tags: true },
     });
     if (!post) {
       throw new PostNotFoundError(id);
@@ -57,10 +58,51 @@ export class PostController {
     return post;
   }
 
+  /**
+   * Dados que a view `post.ejs` consome: autor (campos públicos), tags,
+   * contagens e a lista de comentários com o autor de cada um, mais
+   * `likedByMe` — a mesma forma que o feed usa, para a view não precisar de
+   * dois contratos.
+   *
+   * Fica aqui (e não em `webRoutes.ts`) porque é leitura do recurso `Post`:
+   * a borda HTML só traduz HTTP em chamada de Controller (ADR-0001).
+   */
+  async getForView(id: number, currentUserId: number) {
+    const post = await this.prisma.post.findUnique({
+      where: { id },
+      include: {
+        author: { select: publicUserSelect },
+        tags: true,
+        images: true,
+        _count: { select: { likes: true, comments: true } },
+        comments: {
+          include: { author: { select: publicUserSelect } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+    if (!post) {
+      throw new PostNotFoundError(id);
+    }
+
+    // Uma consulta só para o "curti este post?", pelo índice único
+    // [userId, postId] — não é preciso contar nem trazer a lista.
+    const mine = await this.prisma.like.findUnique({
+      where: { userId_postId: { userId: currentUserId, postId: id } },
+    });
+
+    return { ...post, likedByMe: mine !== null };
+  }
+
   async listByTag(name: string) {
     const tag = await this.prisma.tag.findUnique({
       where: { name },
-      include: { posts: { include: { author: true }, orderBy: { createdAt: 'desc' } } },
+      include: {
+        posts: {
+          include: { author: { select: publicUserSelect } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
     });
     if (!tag) {
       throw new TagNotFoundError(name);

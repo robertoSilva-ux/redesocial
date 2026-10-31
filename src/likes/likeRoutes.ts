@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { LikeController } from './LikeController.js';
 import { requireAuth } from '../auth/middleware.js';
-import { asyncHandler, wantsJson } from '../shared/http.js';
+import { asyncHandler, parseIdParam, wantsJson } from '../shared/http.js';
 
 /**
  * Rotas de interação de curtida — num módulo do recurso `Like`, e não dentro
@@ -24,7 +24,7 @@ export function createLikeRoutes(prisma: PrismaClient): Router {
     asyncHandler(async (req, res) => {
       const state = await likeController.togglePostLike(
         req.session.userId!,
-        Number(req.params.id),
+        parseIdParam(req.params.id),
       );
 
       if (wantsJson(req)) {
@@ -42,7 +42,7 @@ export function createLikeRoutes(prisma: PrismaClient): Router {
     '/posts/:id/like',
     requireAuth,
     asyncHandler(async (req, res) => {
-      const state = await likeController.unlikePost(req.session.userId!, Number(req.params.id));
+      const state = await likeController.unlikePost(req.session.userId!, parseIdParam(req.params.id));
       res.json(state);
     }),
   );

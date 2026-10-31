@@ -42,17 +42,34 @@ function clientErrorStatus(err: Error): number | undefined {
 // função como error handler (em vez de um middleware comum).
 //
 // Este app mistura páginas (EJS, para navegador) e uma API JSON
-// (/api/..., para o REST Client) — o mesmo erro de domínio (ex.:
-// PostNotFoundError) precisa virar uma página de erro num caso e um JSON
-// no outro. `req.accepts` olha o header `Accept` da requisição para decidir.
+// (/api/..., para o REST Client) — o mesmo erro de domínio (ex.: PostNotFoundError)
+// precisa virar uma página de erro num caso e um JSON no outro.
+//
+// A decisão HTML × JSON olha DUAS coisas, nesta ordem:
+//  1. o caminho: tudo sob `/api` responde JSON sempre. Antes, um cliente com
+//     `Accept: */*` (curl, `fetch` sem header) recebia HTML de erro da API.
+//  2. o header `Accept`, para as rotas HTML que também são chamadas por fetch.
 export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction): void {
   const knownStatus = STATUS_BY_ERROR.get(err.constructor);
   const status = knownStatus ?? clientErrorStatus(err) ?? 500;
 
   const isParseFailure = (err as BodyParserError).type === 'entity.parse.failed';
-  const message = isParseFailure ? 'JSON inválido no corpo da requisição' : err.message;
 
-  if (req.accepts(['html', 'json']) === 'html') {
+  // Erro interno NÃO expõe a mensagem: a mensagem de um erro desconhecido é
+  // justamente onde vaza stack do Prisma, caminho do projeto e nome de tabela
+  // (achado da revisão, cartão E0b). O detalhe vai para o log do servidor.
+  if (status >= 500) {
+    console.error('[erro interno]', err);
+  }
+  const message = isParseFailure
+    ? 'JSON inválido no corpo da requisição'
+    : status >= 500
+      ? 'Erro interno do servidor'
+      : err.message;
+
+  const wantsHtml = !(req.path ?? '').startsWith('/api') && req.accepts(['html', 'json']) === 'html';
+
+  if (wantsHtml) {
     res.status(status).render('error', { status, message });
     return;
   }

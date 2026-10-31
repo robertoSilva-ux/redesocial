@@ -5,7 +5,7 @@ import type { CommentController } from './comments/CommentController.js';
 import type { LikeController } from './likes/LikeController.js';
 import type { UserProfileController } from './profiles/UserProfileController.js';
 import type { ImageController } from './images/ImageController.js';
-import { asyncHandler } from './shared/http.js';
+import { asyncHandler, parseIdParam } from './shared/http.js';
 
 // API JSON só de LEITURA (montada em /api pelo server.ts). Escritas
 // (criar usuário, seguir, criar post) migraram para src/webRoutes.ts,
@@ -28,7 +28,9 @@ export function createRoutes(controllers: ApiControllers): Router {
   router.get(
     '/users/:id',
     asyncHandler(async (req, res) => {
-      const found = await user.get(Number(req.params.id));
+      // `parseIdParam` troca `NaN` por 400: sem isso, `/api/users/abc`
+      // chegava ao Prisma e virava 500 com stack no corpo.
+      const found = await user.get(parseIdParam(req.params.id));
       res.json(found);
     }),
   );
@@ -36,7 +38,7 @@ export function createRoutes(controllers: ApiControllers): Router {
   router.get(
     '/users/:id/feed',
     asyncHandler(async (req, res) => {
-      const feed = await user.feed(Number(req.params.id));
+      const feed = await user.feed(parseIdParam(req.params.id));
       res.json(feed);
     }),
   );
@@ -44,7 +46,7 @@ export function createRoutes(controllers: ApiControllers): Router {
   router.get(
     '/posts/:id',
     asyncHandler(async (req, res) => {
-      const found = await post.get(Number(req.params.id));
+      const found = await post.get(parseIdParam(req.params.id));
       res.json(found);
     }),
   );

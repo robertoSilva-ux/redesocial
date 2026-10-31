@@ -1,17 +1,23 @@
 import type { PrismaClient } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { DuplicateFollowError, SelfFollowError, UserNotFoundError, ValidationError } from '../shared/errors.js';
+import { publicUserSelect } from '../shared/selects.js';
 
 // Criar usuário agora é responsabilidade só do AuthController#register
 // (precisa de senha/hash) — não existe mais um "criar usuário sem senha"
 // aqui, de propósito.
+//
+// Sobre `select`: todo retorno que pode virar resposta HTTP usa
+// `publicUserSelect` (src/shared/selects.ts). Nenhum método aqui devolve a
+// linha crua de `User`, porque ela carrega `passwordHash`.
 export class UserController {
   constructor(private readonly prisma: PrismaClient) {}
 
   async get(id: number) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      include: {
+      select: {
+        ...publicUserSelect,
         _count: { select: { posts: true, followers: true, following: true } },
       },
     });
@@ -72,7 +78,7 @@ export class UserController {
     const posts = await this.prisma.post.findMany({
       where: { author: { followers: { some: { followerId: userId } } } },
       include: {
-        author: true,
+        author: { select: publicUserSelect },
         tags: true,
         images: true,
         _count: { select: { likes: true, comments: true } },
@@ -95,6 +101,7 @@ export class UserController {
   async listOthers(currentUserId: number) {
     const users = await this.prisma.user.findMany({
       where: { id: { not: currentUserId } },
+      select: publicUserSelect,
       orderBy: { name: 'asc' },
     });
     const following = await this.prisma.follow.findMany({ where: { followerId: currentUserId } });

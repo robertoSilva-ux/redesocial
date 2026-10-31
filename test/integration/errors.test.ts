@@ -76,20 +76,36 @@ describe('errorHandler (unidade)', () => {
     return res;
   }
 
-  // `req.accepts([...])` decide HTML x JSON; o dublê responde o que o teste quer.
-  function fakeRequest(format: 'html' | 'json' = 'json') {
-    return { accepts: () => format } as unknown as Request;
+  // `req.accepts([...])` e `req.path` decidem HTML x JSON; o dublê responde o
+  // que o teste quer. `path` fica fora de `/api` por padrão.
+  function fakeRequest(format: 'html' | 'json' = 'json', path = '/login') {
+    return { accepts: () => format, path } as unknown as Request;
   }
 
   const next: NextFunction = () => {};
 
-  it('erro desconhecido continua 500 (o default não foi engolido)', () => {
+  it('erro desconhecido continua 500, mas sem vazar a mensagem interna', () => {
     const res = fakeResponse();
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    errorHandler(new Error('boom'), fakeRequest(), res, next);
+    errorHandler(new Error('Invalid `prisma.post.findUnique()` invocation in /home/x.ts'), fakeRequest(), res, next);
 
     expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({ error: 'boom' });
+    expect(res.json).toHaveBeenCalledWith({ error: 'Erro interno do servidor' });
+    // O detalhe não some: vai para o log do servidor.
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('erro desconhecido em /api vira JSON mesmo com Accept: text/html', () => {
+    const res = fakeResponse();
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    errorHandler(new Error('boom'), fakeRequest('html', '/api/posts/1'), res, next);
+
+    expect(res.render).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({ error: 'Erro interno do servidor' });
+    spy.mockRestore();
   });
 
   it('status 4xx do body-parser é preservado (413 de corpo grande demais)', () => {
