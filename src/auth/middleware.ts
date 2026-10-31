@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
-import { parseIdParam } from '../shared/http.js';
+import { parseIdParam, sendError } from '../shared/http.js';
 
 // AUTENTICAÇÃO ("quem é você?"): só verifica se existe uma sessão válida
 // com um `userId`. Não olha PARA QUAL recurso a requisição é — só se há
@@ -30,11 +30,40 @@ export function requireOwnPost(prisma: PrismaClient) {
       const post = await prisma.post.findUnique({ where: { id: postId } });
 
       if (!post) {
-        res.status(404).render('error', { status: 404, message: 'Post não encontrado' });
+        sendError(req, res, 404, 'Post não encontrado');
         return;
       }
       if (post.authorId !== req.session.userId) {
-        res.status(403).render('error', { status: 403, message: 'Você não pode apagar um post de outra pessoa' });
+        sendError(req, res, 403, 'Você não pode apagar um post de outra pessoa');
+        return;
+      }
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+/**
+ * AUTORIZAÇÃO do comentário: quem apaga (ou edita) um comentário é quem o
+ * escreveu — mesma pergunta de `requireOwnPost`, aplicada a outro recurso.
+ *
+ * Analogia com posts e justificativa da separação: `authorId` do comentário
+ * vem da sessão quando ele é criado (nunca do corpo), e é isso que esta
+ * checagem compara. Devolve JSON para `fetch` e página para formulário.
+ */
+export function requireOwnComment(prisma: PrismaClient) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const commentId = parseIdParam(req.params.id);
+      const comment = await prisma.comment.findUnique({ where: { id: commentId } });
+
+      if (!comment) {
+        sendError(req, res, 404, 'Comentário não encontrado');
+        return;
+      }
+      if (comment.authorId !== req.session.userId) {
+        sendError(req, res, 403, 'Você não pode apagar um comentário de outra pessoa');
         return;
       }
       next();

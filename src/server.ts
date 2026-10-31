@@ -10,6 +10,7 @@ import { ImageController } from './images/ImageController.js';
 import { createRoutes } from './routes.js';
 import { createWebRoutes } from './webRoutes.js';
 import { createLikeRoutes } from './likes/likeRoutes.js';
+import { createCommentRoutes } from './comments/commentRoutes.js';
 import { createSessionMiddleware } from './auth/session.js';
 import { createImageStorage } from './uploads/createImageStorage.js';
 import { UPLOAD_DIR } from './uploads/localStorage.js';
@@ -40,6 +41,10 @@ export function createServer(prisma: PrismaClient, imageStorage: ImageStorage = 
   // Interações (curtir/descurtir) ficam no módulo do recurso `Like`, não em
   // webRoutes.ts — ver src/likes/likeRoutes.ts e a justificativa no README.
   app.use(createLikeRoutes(prisma));
+
+  // Comentários (criar/listar/apagar) no módulo do recurso `Comment`, pelo
+  // mesmo motivo: `PostController` responde por posts, não por comentários.
+  app.use(createCommentRoutes(prisma));
 
   app.use(createWebRoutes(prisma, imageStorage));
   app.use(

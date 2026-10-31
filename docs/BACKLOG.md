@@ -14,7 +14,7 @@ item 1 já entregue.
 | --- | --- | --- | --- | --- |
 | E0 | 1 | conserto durável da dependência nativa (`better-sqlite3`) | — | — |
 | E0b | 1 | ✅ hardening: `select` explícito, 500 sem vazar interno, validação de `:id`, `GET /posts/:id` | pré-requisito de E1 | E0 |
-| E1 | 3 | comentários em post: escrita, autorização, UI via `fetch` | atividade 2 | E0b |
+| E1 | 3 | comentários em post: escrita ✅, autorização ✅, UI via `fetch` (pendente) | atividade 2 | E0b |
 | E2 | 3 | curtida em comentário + otimista/rollback nos comentários | atividades 3 e 8 | E1a |
 | E3 | 3 | múltiplas fotos: decisão, migração com dados, `upload.array` | atividade 4 | E2c |
 | E4 | 1 | carrossel no feed | atividade 5 | E3c |
@@ -36,6 +36,23 @@ sem precisar aprovar script de build.
 **Aceite cumprido.** `npm ci` de árvore limpa → `npm test` **74/74**, verificado primeiro numa cópia
 isolada e depois no repositório; `npm ls better-sqlite3` = uma cópia, sem `invalid`;
 `npm install --dry-run` não propõe nenhum `add`.
+
+### Atualização de dependências (31/10)
+
+`npm audit fix` (sem `--force`, só dentro dos ranges declarados): **14 → 5**. Em produção, 10 → 2
+(sobrava `qs`/DoS). Fechado com `npm update express` (4.22.2 → **4.22.3**, que puxa `qs ~6.16.0` em
+vez de `~6.15.1`): **0 vulnerabilidades em produção**. Restam 3 moderadas de **dev**
+(`vitest`, `@vitest/mocker`, `@vitest/coverage-v8` — injeção de código em mock manual; exige major do
+Vitest, fora do escopo).
+
+Diretas que mudaram: `multer 2.2.0 → 2.5.0` e `prisma 7.10.0 → 7.10.1`; 53 entradas no lock.
+Verificado depois: **100 testes**, `tsc` limpo, override do `better-sqlite3` intacto, e smoke no
+servidor real (login, feed, `/api/posts`, comentário por formulário e upload multipart com gravação
+em `uploads/`).
+
+O smoke revelou um defeito que a suíte não cobre: `MulterError` cai em **500**. Enviar um campo de
+arquivo inesperado (`images` quando a rota espera `image`) ou um arquivo acima de 5 MB devolve
+"Erro interno do servidor" em vez de 400/413 — registrado no cartão **E0c**.
 
 ## E0b — hardening — ✅ concluído em 31/10
 
@@ -59,13 +76,19 @@ no login, fallback do `SESSION_SECRET`), CSRF nos POSTs, validação real de upl
 extensão derivada do tipo), arquivo órfão quando a validação falha, `MulterError` caindo em 500,
 `listByTag` sem paginação (o README diz que é paginada) e o `console.log` em `webRoutes.ts:109`.
 
-## E1 — comentários (atividade 2)
+## E1 — comentários (atividade 2) — E1a ✅ concluído em 31/10
 
 **Escopo.** `create`/`listByPost`/`remove` no `comments/`, `requireOwnComment`, rotas
 `POST`/`GET /posts/:id/comments` e `DELETE /comments/:id`, form no feed via `fetch` com o comentário
 inserido sem reload, botão apagar só no próprio.
 **Aceite.** Testes de integração com caminho feliz **e** erro por rota (sem sessão, conteúdo vazio,
 post inexistente, apagar de outro). Nenhum teste existente alterado.
+
+**Feito (E1a).** `CommentController.create/listByPost/remove`, `requireOwnComment` em
+`auth/middleware.ts`, rotas em `comments/commentRoutes.ts` (`POST`/`GET /posts/:id/comments`,
+`DELETE /comments/:id`) registradas em `server.ts`. 14 testes novos em
+`test/integration/comments.routes.test.ts` (total 100). Provado no servidor real: `authorId` do corpo
+ignorado (autoria da sessão), 403 ao apagar comentário alheio, 204 no próprio, 400 em conteúdo vazio.
 **Risco.** `Comment` tem `parentId` (respostas): decidir se a UI já cria resposta em thread ou se fica para depois — registrar a decisão, não deixar meio-feito.
 
 ## E2 — curtida em comentário (atividades 3 e 8)

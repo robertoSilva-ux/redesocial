@@ -9,6 +9,20 @@ export function wantsJson(req: Request): boolean {
 }
 
 /**
+ * Responde um erro respeitando o cliente: JSON para quem pediu JSON (o
+ * `fetch` do feed manda `Accept: application/json`), página de erro para o
+ * formulário. Usado pelos middlewares de autorização, que antes devolviam
+ * sempre HTML — errado para uma chamada de `fetch`.
+ */
+export function sendError(req: Request, res: Response, status: number, message: string): void {
+  if (wantsJson(req)) {
+    res.status(status).json({ error: message });
+    return;
+  }
+  res.status(status).render('error', { status, message });
+}
+
+/**
  * Converte `:id` da rota em número inteiro positivo.
  *
  * Sem isso, `GET /api/posts/abc` entregava `NaN` ao Prisma, que estourava um
