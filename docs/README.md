@@ -48,6 +48,17 @@ entre si; (2) mostrar que o Prisma é a única porta para o banco; (3) mostrar q
 * **Erro 5xx não devolve mensagem interna.** O detalhe vai para o log do servidor
   (`src/shared/errorHandler.ts`); o cliente recebe "Erro interno do servidor".
 * **`:id` de rota passa por `parseIdParam`** (`src/shared/http.ts`): id malformado é 400, nunca 500 do Prisma.
+* **Identidade vem da sessão, nunca do corpo.** `authorId`, `userId` e `followerId` são lidos de
+  `req.session.userId` na borda e passados como parâmetro ao Controller; o valor do corpo é ignorado
+  (há teste disso em `comments.routes.test.ts`).
+* **Toda rota de escrita serve dois clientes** (`ADR-0004`): JSON quando o `fetch` manda
+  `Accept: application/json`, redirect quando é `<form>`. Quem adiciona interação nova implementa os
+  dois caminhos — e, se a ação precisa de verbo que `<form>` não faz (DELETE, PATCH), ganha também
+  um fallback POST (ex.: `POST /comments/:id/delete`).
+* **Atualização otimista só quando o estado é binário e reversível.** Curtida pinta antes da resposta
+  e desfaz se falhar; comentário espera o `201`, porque o texto e o id vêm do servidor — inventar um
+  comentário antes exigiria inventar id e autor. A regra está em `public/feed.js`, lado a lado com as
+  duas implementações.
 
 ## Pendências conhecidas (não são decisões tomadas)
 
