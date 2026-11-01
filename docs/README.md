@@ -9,7 +9,7 @@ docs/
 ├── BACKLOG.md             especificação do Trabalho II em incrementos (E0..E7)
 ├── adr/                   Architecture Decision Records (um arquivo por decisão)
 │   ├── README.md          índice, convenção e template
-│   ├── 0001 ... 0010      decisões aceitas
+│   ├── 0001 ... 0011      decisões aceitas
 └── arquitetura/
     └── c4.md              diagramas C4: contexto (1), containers (2) e componentes (3)
 ```
@@ -56,6 +56,12 @@ entre si; (2) mostrar que o Prisma é a única porta para o banco; (3) mostrar q
   dois caminhos — e, se a ação precisa de verbo que `<form>` não faz (DELETE, PATCH), ganha também
   um fallback POST (ex.: `POST /comments/:id/delete` e `POST /comments/:id/edit`, que acompanha o
   `PATCH /comments/:id`).
+* **Listagem serve JSON por padrão e fragmento HTML quando o cliente pede** (ADR-0011): o `fetch`
+  manda `Accept: text/html` e recebe o partial renderizado; API e `curl` continuam recebendo
+  `{ data, meta }`. Rota de leitura nova segue o mesmo critério, sem endpoint `/fragment` paralelo.
+* **Estado de UI que o servidor pode calcular vem do servidor.** O link ativo da ordenação sai do
+  `?sort=` renderizado, não do clique; o `commentSort.js` só pinta de novo depois do `fetch`. Se o
+  `fetch` falhar, a tela continua mostrando o estado verdadeiro.
 * **Editar texto reescreve o dado, não a apresentação.** Quando o JS troca o conteúdo de um nó
   (`span.textContent = ...`), tudo o que estava dentro dele se perde — inclusive separação e
   ênfase escritas como parte do texto. Foi o que aconteceu na edição de comentário: o espaço entre

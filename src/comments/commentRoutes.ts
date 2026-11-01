@@ -3,6 +3,8 @@ import type { PrismaClient } from '@prisma/client';
 import { CommentController } from './CommentController.js';
 import { requireAuth, requireOwnComment } from '../auth/middleware.js';
 import { asyncHandler, parseIdParam, wantsJson } from '../shared/http.js';
+import ejs from 'ejs';
+import path from 'node:path';
 
 /**
  * Rotas de comentário — no módulo do recurso `Comment`, não dentro de
@@ -26,7 +28,35 @@ export function createCommentRoutes(prisma: PrismaClient): Router {
   router.get(
     '/posts/:id/comments',
     asyncHandler(async (req, res) => {
-      const page = await comments.listByPost(parseIdParam(req.params.id), req.query);
+      const postId = parseIdParam(req.params.id);
+      const viewerId = req.session.userId;
+
+      // `viewerId` é opcional: sem sessão a listagem continua funcionando (API),
+      // e `likedByMe` sai `false` — o mesmo critério do feed.
+      const page = await comments.listByPost(postId, req.query, { viewerId });
+
+      // Dois clientes para a MESMA leitura (espelho do ADR-0004/0010): o `fetch`
+      // do toggle "mais curtidos" pede `Accept: text/html` e recebe o fragmento
+      // com o partial do comentário; qualquer outro cliente recebe o JSON de
+      // sempre. O partial é o único dono do markup — o cliente não remonta card.
+      if (viewerId && !wantsJson(req) && req.accepts(['json', 'html']) === 'html') {
+        const viewDir = path.join(import.meta.dirname, '..', 'views', 'partials');
+        const html = page.data.length
+          ? await Promise.all(
+              page.data.map((comment) =>
+                ejs.renderFile(path.join(viewDir, 'comment.ejs'), {
+                  comment,
+                  currentUser: { id: viewerId },
+                }),
+              ),
+            )
+          : ['<li class="text-sm text-slate-500">Nenhum comentário ainda.</li>'];
+
+        res.setHeader('X-Total', String(page.meta.total));
+        res.type('html').send(html.join('\n'));
+        return;
+      }
+
       res.json(page);
     }),
   );

@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
-import { buildOrderBy, buildPage, parsePagination, SORTABLE_FIELDS } from '../shared/pagination.js';
+import { buildPage } from '../shared/pagination.js';
+import { parseCommentListing } from './commentListing.js';
 import { publicUserSelect } from '../shared/selects.js';
 import { PostNotFoundError, ValidationError } from '../shared/errors.js';
 
@@ -12,8 +13,9 @@ export class CommentController {
   constructor(private readonly prisma: PrismaClient) {}
 
   // GET /comments?page=1&pageSize=10&sort=createdAt&order=desc
+  // GET /comments?sort=likes (mais curtidos primeiro — ver commentListing.ts)
   async list(query: unknown) {
-    const page = parsePagination(query, { sortable: SORTABLE_FIELDS.comment });
+    const { page, orderBy } = parseCommentListing(query);
 
     const [comments, total] = await Promise.all([
       this.prisma.comment.findMany({
@@ -21,7 +23,9 @@ export class CommentController {
           author: { select: { id: true, name: true, avatarUrl: true } },
           _count: { select: { replies: true, likes: true } },
         },
-        orderBy: buildOrderBy(page),
+        // `orderBy` vem do próprio módulo: `sort=likes` ordena pelo agregado
+        // de `Comment.likes`, que não cabe no `buildOrderBy` (ADR-0005).
+        orderBy,
         skip: page.skip,
         take: page.take,
       }),
@@ -37,13 +41,10 @@ export class CommentController {
    * outras listagens (`{ data, meta }`), porque o feed vai precisar paginar
    * quando um post tiver muita discussão.
    */
-  async listByPost(postId: number, query: unknown) {
+  async listByPost(postId: number, query: unknown, options: { viewerId?: number } = {}) {
     await this.assertPostExists(postId);
 
-    const page = parsePagination(query, {
-      sortable: SORTABLE_FIELDS.comment,
-      defaultOrder: 'asc',
-    });
+    const { page, orderBy } = parseCommentListing(query, { defaultOrder: 'asc' });
 
     const where = { postId };
     const [comments, total] = await Promise.all([
@@ -53,14 +54,32 @@ export class CommentController {
           author: { select: publicUserSelect },
           _count: { select: { likes: true, replies: true } },
         },
-        orderBy: buildOrderBy(page),
+        // Mesmo motivo do `list`: `sort=likes` é ordenação por relação
+        // (ADR-0005). O `count` abaixo usa só o `where`, então o `meta` não
+        // depende do `orderBy`.
+        orderBy,
         skip: page.skip,
         take: page.take,
       }),
       this.prisma.comment.count({ where }),
     ]);
 
-    return buildPage(comments, total, page);
+    // `likedByMe` por comentário, numa consulta só (`in`), como o feed faz.
+    // Sem `viewerId` (cliente de API sem sessão) o campo sai `false` em todos —
+    // é o mesmo critério do feed para quem não está logado.
+    const curtidos = options.viewerId
+      ? await this.prisma.like.findMany({
+          where: { userId: options.viewerId, commentId: { in: comments.map((c) => c.id) } },
+          select: { commentId: true },
+        })
+      : [];
+    const curtidosIds = new Set(curtidos.map((like) => like.commentId));
+
+    return buildPage(
+      comments.map((comment) => ({ ...comment, likedByMe: curtidosIds.has(comment.id) })),
+      total,
+      page,
+    );
   }
 
   /**

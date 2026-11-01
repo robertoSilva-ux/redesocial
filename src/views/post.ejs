@@ -7,9 +7,15 @@
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
   <body class="bg-slate-100 min-h-screen">
-    <%# ATIVIDADE: esta view ainda não tem rota. Ela espera receber `currentUser` e `post`
-        (com author, tags, comments e as contagens). Ver Aula05/atividade-likes-comentarios.md %>
-    <% const comments = post.comments ?? []; %>
+    <%#
+      Espera `currentUser`, `post` e, opcionalmente, os comentários vindos do
+      módulo `comments/` (`comments`, `commentSort`, `commentTotal`) — que é
+      quem entende ordenação por curtidas e `likedByMe`. Sem eles, cai no
+      `post.comments` para não quebrar outro caminho de render.
+    %>
+    <% const lista = typeof comments === 'undefined' ? (post.comments ?? []) : comments; %>
+    <% const ordenacao = typeof commentSort === 'undefined' ? 'createdAt' : commentSort; %>
+    <% const totalComentarios = typeof commentTotal === 'undefined' ? lista.length : commentTotal; %>
     <% const likeCount = post._count?.likes ?? 0; %>
     <% const likedByMe = post.likedByMe ?? false; %>
 
@@ -50,7 +56,7 @@
             <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8">
               <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 9.75h6.75m-6.75 3h4.5M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25-9 3.694-9 8.25c0 1.6.497 3.096 1.356 4.36.1.148.14.33.107.507l-.713 3.133 3.94-1.02c.16-.042.33-.02.48.043 1.15.49 2.45.767 3.83.767Z" />
             </svg>
-            <span><%= comments.length %></span>
+            <span><%= totalComentarios %></span>
           </span>
           <% if (post.authorId === currentUser.id) { %>
             <form method="post" action="/posts/<%= post.id %>/delete" class="ml-auto">
@@ -80,16 +86,36 @@
           </button>
         </form>
 
-        <ul class="flex flex-col gap-2 mt-2" data-comment-list>
-          <% if (comments.length === 0) { %>
+        <%# Ordenação (item 9). Os links funcionam sozinhos: sem JS recarregam a
+            página com `?sort=`, e o `commentSort.js` intercepta para trocar só a
+            lista. A ativa é a que o servidor usou, não o que o clique pediu. %>
+        <div class="flex items-center gap-1 mt-3 text-xs" data-comment-sort-toggle>
+          <span class="text-slate-500">ordenar:</span>
+          <a
+            href="?sort=createdAt"
+            data-comment-sort="createdAt"
+            <%= ordenacao === 'likes' ? '' : 'aria-current="true"' %>
+            class="px-2 py-0.5 rounded-full <%= ordenacao === 'likes' ? 'text-slate-600 hover:bg-slate-100' : 'bg-slate-800 text-white' %>"
+          >mais antigos</a>
+          <a
+            href="?sort=likes"
+            data-comment-sort="likes"
+            <%= ordenacao === 'likes' ? 'aria-current="true"' : '' %>
+            class="px-2 py-0.5 rounded-full <%= ordenacao === 'likes' ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100' %>"
+          >mais curtidos</a>
+        </div>
+
+        <ul class="flex flex-col gap-2 mt-2" data-comment-list data-comment-sort="<%= ordenacao %>">
+          <% if (lista.length === 0) { %>
             <li class="text-sm text-slate-500 py-3">Nenhum comentário ainda. Seja o primeiro.</li>
           <% } %>
-          <% comments.forEach((comment) => { %>
+          <% lista.forEach((comment) => { %>
             <%- include('partials/comment', { comment, currentUser }) %>
           <% }) %>
         </ul>
       </section>
     </main>
     <script src="/carousel.js" defer></script>
+    <script src="/commentSort.js" defer></script>
   </body>
 </html>

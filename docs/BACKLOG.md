@@ -215,19 +215,50 @@ eventos da discussão item 4).
 | Cartão | Escopo                                                                    | Aceite                                                                              |
 | ------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | E6a ✅ | `PATCH /comments/:id`, edição inline                                      | próprio 200, de outro 403, vazio 400, 404                                           |
-| E6b    | comentários por `_count.likes` (consulta própria, fora do `buildOrderBy`) | mais curtido primeiro, empate estável                                               |
-| E6b-2  | mesma entrega, 2ª tentativa (a 1ª foi descartada)                          | idem, com o código no repo e revisado                                               |
+| E6b ✅ | comentários por `_count.likes` (consulta própria, fora do `buildOrderBy`) | mais curtido primeiro, empate estável                                               |
+| E6b-2 ✅ | mesma entrega, 2ª tentativa + toggle na página do post                   | idem, com o código no repo e revisado                                               |
 | E6c    | `User.lastSeenAt` + contador de novidades                                 | conta like/comment de terceiros nos meus posts, não os meus, zera no próximo acesso |
 
-### E6b — descartado na 1ª tentativa (31/10)
+### E6b / E6b-2 — comentários por mais curtidos — ✅ concluído em 31/10
 
-Um worker do board executou o E6b fora de hora e o cartão foi marcado `done`, mas o código não passou
-por revisão e ficou **fora do commit** `7431297` — `src/comments/commentListing.ts`, o teste
-`comment-sort-likes.routes.test.ts` (13 testes) e a troca de `buildOrderBy` por `parseCommentListing`
-em `CommentController`. Isso não é perda de trabalho: os arquivos estão em
-`~/.hermes/cache/scratch/worker-e6b-abortado/`, e a decisão entre reintegrar e reimplementar está no
-cartão **E6b-2**. A lição operacional está na skill `kanban-backlog-planning`: um cartão por vez,
-`unblock && claim` na mesma linha, e `git status` depois de qualquer worker morto.
+Backend em `src/comments/commentListing.ts`: `parseCommentListing(query, { defaultOrder })` devolve
+`{ page, orderBy }`. `?sort=likes` é lido **antes** do `parsePagination` e vira
+
+```ts
+[{ likes: { _count: 'desc' } }, { createdAt: 'desc' }, { id: 'desc' }]
+```
+
+O caminho ingênuo — acrescentar `'likes'` a `SORTABLE_FIELDS.comment` — geraria `{ likes: 'desc' }`,
+que o Prisma recusa com `PrismaClientValidationError` e isso cairia no `errorHandler` como **500 em
+vez de 400**. A lista branca continua só com colunas de verdade; `meta.sort` reporta `'likes'` e
+`meta.order` reporta `'desc'`, que é a direção efetivamente usada (ver a consequência 5 do ADR-0011
+sobre `order=asc` ser ignorado).
+
+**Interface (a parte que faltava na 1ª tentativa).** O enunciado pede "ordenar por mais curtidos
+**em vez de só por data**", então a ordenação precisava aparecer na tela. Na página do post há um
+toggle *mais antigos / mais curtidos*:
+
+* **sem JS**: são links `href="?sort=..."`, e a página recarrega já ordenada;
+* **com JS**: `public/commentSort.js` intercepta, faz `fetch` em `/posts/:id/comments?sort=...` com
+  `Accept: text/html` e troca só o `<ul data-comment-list>` pelo fragmento. A URL passa a refletir a
+  ordem (`history.replaceState`) e o link ativo é o que o servidor usou, não o que o clique pediu.
+
+Para isso a página do post deixou de ler os comentários do `include` do post e passou a pedi-los ao
+`CommentController.listByPost` — que ganhou `viewerId` opcional para devolver `likedByMe` (sem isso
+os botões de curtida voltariam apagados). O formato da resposta é negociado na rota (ADR-0011).
+
+**Testes: 17 novos (157 no total).** 13 parametrizados nos dois endpoints (`/api/comments` e
+`/posts/:id/comments`), com o cenário montado contra o próprio teste: os pares empatados têm `id` em
+ordem **oposta** ao `createdAt`, então um desempate por `id` inverteria o par e o teste quebraria; e
+o comentário mais curtido é o mais antigo, o que distingue "por curtidas" de "por data". Mais 4 para
+a interface: renderização sem JS com `?sort=likes`, fragmento HTML com `X-Total`, JSON preservado
+para quem pede JSON, e ausência de sessão caindo para JSON.
+
+**Defeito pego na verificação de navegador:** o `fetch` do toggle usava `link.href`, e `href="?sort=..."`
+resolve para a **própria página** — o cliente buscava o HTML inteiro e o injetava dentro do `<ul>`. A
+lista parecia certa (os `<li>` aninhados respondiam ao seletor), o que torna o erro perigoso: só
+apareceu ao inspecionar a URL da requisição. Agora o alvo é montado do caminho
+(`/posts/16` → `/posts/16/comments`), e há uma guarda que recusa injetar resposta com `<html`.
 
 ### E6a — editar o próprio comentário — ✅ concluído em 31/10
 
@@ -268,8 +299,8 @@ malformado 400, sem sessão 302, inexistente 404, fallback com redirect e a marc
 | Autorização sempre da sessão                    | `requireAuth`/`requireOwnComment` e testes de 403           |
 | Fronteira de módulo                             | tabela em `arquitetura/c4.md` (nível 3a) + `ADR-0001`       |
 | Migração sem perda de dados                     | teste da migração em E3b                                    |
-| UI sem reload                                   | DevTools nos cartões E1b, E2b, E4, E5c, E6a                 |
-| Registro de decisões                            | `docs/adr/` 0001–0010 + `README.md` (discussão obrigatória) |
+| UI sem reload                                   | DevTools nos cartões E1b, E2b, E4, E5c, E6a, E6b-2          |
+| Registro de decisões                            | `docs/adr/` 0001–0011 + `README.md` (discussão obrigatória) |
 
 ## Decisões que travam o backlog
 

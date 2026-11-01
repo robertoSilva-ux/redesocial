@@ -8,6 +8,7 @@ import { MAX_POST_IMAGES, upload } from './uploads/upload.js';
 import type { ImageStorage } from './uploads/storage.js';
 import { asyncHandler, parseIdParam } from './shared/http.js';
 import { decodeFeedCursor } from './shared/pagination.js';
+import { CommentController } from './comments/CommentController.js';
 import ejs from 'ejs';
 import path from 'node:path';
 import { DuplicateEmailError, InvalidCredentialsError, ValidationError } from './shared/errors.js';
@@ -146,11 +147,27 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     requireAuth,
     asyncHandler(async (req, res) => {
       const currentUserId = req.session.userId!;
-      const [currentUser, post] = await Promise.all([
+      const postId = parseIdParam(req.params.id);
+
+      // Os comentários vêm do módulo `comments/`, não do `include` do post: é
+      // ele quem entende ordenação (ADR-0005), paginação e `likedByMe`. A
+      // composição acontece aqui, na borda — `posts/` não importa `comments/`.
+      const [currentUser, post, comentarios] = await Promise.all([
         userController.get(currentUserId),
-        postController.getForView(parseIdParam(req.params.id), currentUserId),
+        postController.getForView(postId, currentUserId),
+        new CommentController(prisma).listByPost(postId, req.query, { viewerId: currentUserId }),
       ]);
-      res.render('post', { currentUser, post, error: null });
+
+      // Sem JS, os links de ordenação recarregam a página com `?sort=`; com JS,
+      // o `commentSort.js` busca o fragmento e troca a lista (ADR-0004/0010).
+      res.render('post', {
+        currentUser,
+        post,
+        comments: comentarios.data,
+        commentSort: comentarios.meta.sort,
+        commentTotal: comentarios.meta.total,
+        error: null,
+      });
     }),
   );
 
