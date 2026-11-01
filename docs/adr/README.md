@@ -21,6 +21,7 @@ reutilizada** — ADR apagado deixa o número queimado.
 | [0009](0009-postimage-tabela-propria.md) | `PostImage` como tabela própria (1:N com `order`), migrando `Post.imageUrl` com passo de dados | Aceita | 2026-10-31 |
 | [0010](0010-feed-fragmento-html.md) | Feed paginado devolve fragmento HTML (não JSON + template no cliente) | Aceita | 2026-10-31 |
 | [0011](0011-listagem-negocia-formato.md) | Listagem de comentários negocia formato: JSON × fragmento HTML | Aceita |
+| [0012](0012-contador-de-novidades.md) | Contador de novidades derivado de `createdAt`, corte em `lastSeenAt` | Aceita |
 
 ## Template
 

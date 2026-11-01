@@ -9,7 +9,7 @@ docs/
 ├── BACKLOG.md             especificação do Trabalho II em incrementos (E0..E7)
 ├── adr/                   Architecture Decision Records (um arquivo por decisão)
 │   ├── README.md          índice, convenção e template
-│   ├── 0001 ... 0011      decisões aceitas
+│   ├── 0001 ... 0012      decisões aceitas
 └── arquitetura/
     └── c4.md              diagramas C4: contexto (1), containers (2) e componentes (3)
 ```

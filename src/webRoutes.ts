@@ -9,6 +9,7 @@ import type { ImageStorage } from './uploads/storage.js';
 import { asyncHandler, parseIdParam } from './shared/http.js';
 import { decodeFeedCursor } from './shared/pagination.js';
 import { CommentController } from './comments/CommentController.js';
+import { NotificationController } from './notifications/NotificationController.js';
 import ejs from 'ejs';
 import path from 'node:path';
 import { DuplicateEmailError, InvalidCredentialsError, ValidationError } from './shared/errors.js';
@@ -87,14 +88,28 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     requireAuth,
     asyncHandler(async (req, res) => {
       const currentUserId = req.session.userId!;
-      const [currentUser, pagina, others] = await Promise.all([
+      const notificacoes = new NotificationController(prisma);
+      const [currentUser, pagina, others, novidades] = await Promise.all([
         userController.get(currentUserId),
         userController.feedPage(currentUserId),
         userController.listOthers(currentUserId),
+        notificacoes.countSince(currentUserId),
       ]);
+
+      // Abrir o feed é o que "consome" as novidades (ADR-0012): o contador foi
+      // lido com o `lastSeenAt` antigo e só depois o acesso é marcado, então o
+      // selo aparece nesta carga e some na próxima.
+      await notificacoes.markSeen(currentUserId);
+
       // A primeira página já informa o cursor: é o que o scroll infinito usa
       // para continuar de onde a renderização inicial parou (ADR-0010).
-      res.render('feed', { currentUser, feed: pagina.posts, others, nextCursor: pagina.nextCursor });
+      res.render('feed', {
+        currentUser,
+        feed: pagina.posts,
+        others,
+        nextCursor: pagina.nextCursor,
+        novidades,
+      });
     }),
   );
 
@@ -152,10 +167,13 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
       // Os comentários vêm do módulo `comments/`, não do `include` do post: é
       // ele quem entende ordenação (ADR-0005), paginação e `likedByMe`. A
       // composição acontece aqui, na borda — `posts/` não importa `comments/`.
-      const [currentUser, post, comentarios] = await Promise.all([
+      const [currentUser, post, comentarios, novidades] = await Promise.all([
         userController.get(currentUserId),
         postController.getForView(postId, currentUserId),
         new CommentController(prisma).listByPost(postId, req.query, { viewerId: currentUserId }),
+        // Aqui o contador só é exibido: ler um post não zera o aviso, senão a
+        // pessoa perderia a novidade antes de voltar ao feed (ADR-0012).
+        new NotificationController(prisma).countSince(currentUserId),
       ]);
 
       // Sem JS, os links de ordenação recarregam a página com `?sort=`; com JS,
@@ -166,6 +184,7 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
         comments: comentarios.data,
         commentSort: comentarios.meta.sort,
         commentTotal: comentarios.meta.total,
+        novidades,
         error: null,
       });
     }),

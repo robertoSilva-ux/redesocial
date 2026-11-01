@@ -1,0 +1,18 @@
+<%#
+  Selo de novidades desde o último acesso (item 10 do Trabalho II).
+  Espera `novidades` (`{ likes, comments, total }`); não renderiza nada quando
+  o total é zero — o header não deve ganhar espaço vazio.
+%>
+<% if (typeof novidades !== 'undefined' && novidades && novidades.total > 0) { %>
+  <a
+    href="/"
+    class="flex items-center gap-1.5 text-xs bg-rose-600 hover:bg-rose-500 text-white rounded-full px-2.5 py-1"
+    title="<%= novidades.likes %> curtida<%= novidades.likes === 1 ? '' : 's' %> e <%= novidades.comments %> comentário<%= novidades.comments === 1 ? '' : 's' %> desde seu último acesso"
+    data-news-count="<%= novidades.total %>"
+  >
+    <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+    </svg>
+    <span><%= novidades.total %> nova<%= novidades.total === 1 ? '' : 's' %></span>
+  </a>
+<% } %>

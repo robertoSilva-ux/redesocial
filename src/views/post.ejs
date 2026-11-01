@@ -21,7 +21,10 @@
 
     <header class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
       <h1 class="text-lg font-semibold">Post de <%= post.author.name %></h1>
-      <a href="/" class="text-slate-300 text-sm hover:text-white">&larr; Voltar para o feed</a>
+      <div class="flex items-center gap-3">
+        <%- include('partials/novidades', { novidades }) %>
+        <a href="/" class="text-slate-300 text-sm hover:text-white">&larr; Voltar para o feed</a>
+      </div>
     </header>
 
     <main class="max-w-2xl mx-auto mt-8 px-4 flex flex-col gap-4">

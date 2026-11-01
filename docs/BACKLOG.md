@@ -217,7 +217,7 @@ eventos da discussão item 4).
 | E6a ✅ | `PATCH /comments/:id`, edição inline                                      | próprio 200, de outro 403, vazio 400, 404                                           |
 | E6b ✅ | comentários por `_count.likes` (consulta própria, fora do `buildOrderBy`) | mais curtido primeiro, empate estável                                               |
 | E6b-2 ✅ | mesma entrega, 2ª tentativa + toggle na página do post                   | idem, com o código no repo e revisado                                               |
-| E6c    | `User.lastSeenAt` + contador de novidades                                 | conta like/comment de terceiros nos meus posts, não os meus, zera no próximo acesso |
+| E6c ✅ | `User.lastSeenAt` + contador de novidades                                 | conta like/comment de terceiros nos meus posts, não os meus, zera no próximo acesso |
 
 ### E6b / E6b-2 — comentários por mais curtidos — ✅ concluído em 31/10
 
@@ -260,6 +260,32 @@ lista parecia certa (os `<li>` aninhados respondiam ao seletor), o que torna o e
 apareceu ao inspecionar a URL da requisição. Agora o alvo é montado do caminho
 (`/posts/16` → `/posts/16/comments`), e há uma guarda que recusa injetar resposta com `<html`.
 
+### E6c — contador de novidades desde o último acesso — ✅ concluído em 31/10
+
+Migração `20261031232811_add_user_last_seen_at` (uma coluna `DateTime?`, sem passo de dados — é
+aditiva e nula para todo mundo). `src/notifications/NotificationController.ts`:
+
+* `countSince(userId)` deriva o número de três `count()` com `createdAt > lastSeenAt` — curtidas de
+  terceiros nos meus posts, curtidas de terceiros nos meus comentários, comentários de terceiros nos
+  meus posts. Nada de contador materializado (ADR-0012);
+* `markSeen(userId)` grava o corte. É chamado **só** no `GET /` (feed), depois de ler o contador, e
+  **não** na página do post — abrir um post não pode consumir o aviso;
+* primeiro acesso (`lastSeenAt` nulo) devolve **zero**, não o histórico da conta.
+
+Na interface, o selo vive em `partials/novidades.ejs` (sino + "N novas", `title` com o detalhamento
+"1 curtida e 1 comentário desde seu último acesso") e não renderiza nada quando o total é zero, então
+o header não ganha espaço vazio. Aparece no feed e na página do post.
+
+**8 testes (165 no total)**, um por regra da tabela do ADR-0012: primeiro acesso zera e marca, curtida
+de terceiro conta e a carga seguinte zera, comentário de terceiro conta, curtida no meu comentário
+conta, minha própria atividade não conta, atividade anterior ao corte não conta, ler post não consome
+e o selo não vaza para quem não é dono do post.
+
+**A migração reaproveitada:** o arquivo é o que um worker abortado havia aplicado no `dev.db` (o
+registro ficou em `_prisma_migrations` mesmo com o arquivo fora do repo). Restaurá-lo deixou schema,
+migrações e banco consistentes — `prisma migrate status` responde "up to date" — em vez de resetar o
+banco de desenvolvimento e perder os dados de teste.
+
 ### E6a — editar o próprio comentário — ✅ concluído em 31/10
 
 `CommentController.update(commentId, body)` reaproveita **a mesma** validação do `create` (obrigatório,
@@ -300,7 +326,7 @@ malformado 400, sem sessão 302, inexistente 404, fallback com redirect e a marc
 | Fronteira de módulo                             | tabela em `arquitetura/c4.md` (nível 3a) + `ADR-0001`       |
 | Migração sem perda de dados                     | teste da migração em E3b                                    |
 | UI sem reload                                   | DevTools nos cartões E1b, E2b, E4, E5c, E6a, E6b-2          |
-| Registro de decisões                            | `docs/adr/` 0001–0011 + `README.md` (discussão obrigatória) |
+| Registro de decisões                            | `docs/adr/` 0001–0012 + `README.md` (discussão obrigatória) |
 
 ## Decisões que travam o backlog
 
@@ -308,4 +334,4 @@ malformado 400, sem sessão 302, inexistente 404, fallback com redirect e a marc
 | ------ | ------------------------------------------- | ----------------------------------------------- | ----------------- |
 | E3a    | `PostImage` novo × reaproveitar `Image`     | define a migração inteira do item 4             | decidida (0009)   |
 | E5a    | fragmento HTML × JSON + template no cliente | duplica ou não o markup do card em dois lugares | decidida (0010)   |
-| E6c    | semântica do primeiro acesso (`lastSeenAt` nulo) | define o que conta como "novidade" para quem nunca entrou | **em aberto** |
+| E6c    | semântica do primeiro acesso (`lastSeenAt` nulo) | define o que conta como "novidade" para quem nunca entrou | decidida (0012)   |

@@ -17,6 +17,12 @@ model User {
   avatarUrl    String?
   createdAt    DateTime @default(now())
 
+  // Último acesso que já "consumiu" as novidades (item 10 do Trabalho II).
+  // Nulo = nunca consumiu: o contador começa do zero em vez de contar todo o
+  // histórico da conta (semântica registrada na ADR-0012). Não confundir com
+  // `createdAt`, que é o cadastro.
+  lastSeenAt DateTime?
+
   posts Post[]
 
   // Autorrelação N:N — User segue User, via tabela de junção explícita
