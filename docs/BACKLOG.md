@@ -216,7 +216,18 @@ eventos da discussão item 4).
 | ------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | E6a ✅ | `PATCH /comments/:id`, edição inline                                      | próprio 200, de outro 403, vazio 400, 404                                           |
 | E6b    | comentários por `_count.likes` (consulta própria, fora do `buildOrderBy`) | mais curtido primeiro, empate estável                                               |
+| E6b-2  | mesma entrega, 2ª tentativa (a 1ª foi descartada)                          | idem, com o código no repo e revisado                                               |
 | E6c    | `User.lastSeenAt` + contador de novidades                                 | conta like/comment de terceiros nos meus posts, não os meus, zera no próximo acesso |
+
+### E6b — descartado na 1ª tentativa (31/10)
+
+Um worker do board executou o E6b fora de hora e o cartão foi marcado `done`, mas o código não passou
+por revisão e ficou **fora do commit** `7431297` — `src/comments/commentListing.ts`, o teste
+`comment-sort-likes.routes.test.ts` (13 testes) e a troca de `buildOrderBy` por `parseCommentListing`
+em `CommentController`. Isso não é perda de trabalho: os arquivos estão em
+`~/.hermes/cache/scratch/worker-e6b-abortado/`, e a decisão entre reintegrar e reimplementar está no
+cartão **E6b-2**. A lição operacional está na skill `kanban-backlog-planning`: um cartão por vez,
+`unblock && claim` na mesma linha, e `git status` depois de qualquer worker morto.
 
 ### E6a — editar o próprio comentário — ✅ concluído em 31/10
 
