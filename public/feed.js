@@ -26,6 +26,7 @@
   const LIKE_FORM = 'form[action$="/like"]';
   const COMMENT_FORM = 'form[data-comment-form]';
   const COMMENT_DELETE = 'form[data-comment-delete]';
+  const COMMENT_EDIT = 'form[data-comment-edit-form]';
 
   feed.addEventListener('submit', (event) => {
     const form = event.target.closest('form');
@@ -46,7 +47,25 @@
       deleteComment(form);
       return;
     }
+    if (form.matches(COMMENT_EDIT)) {
+      event.preventDefault();
+      updateComment(form);
+      return;
+    }
     // /follow, /logout, /posts/:id/delete: segue o fluxo normal do formulário
+  });
+
+  // Clique delegado: só os botões de edição de comentário (o resto é submit).
+  feed.addEventListener('click', (event) => {
+    const abrir = event.target.closest('[data-comment-edit]');
+    if (abrir) {
+      abrirEdicao(abrir.closest('[data-comment-id]'));
+      return;
+    }
+    const cancelar = event.target.closest('[data-comment-edit-cancel]');
+    if (cancelar) {
+      fecharEdicao(cancelar.closest('[data-comment-id]'));
+    }
   });
 
   // ----------------------------------------------------------------- curtida
@@ -147,37 +166,82 @@
   /** Monta o <li> com `textContent` — nada de innerHTML com dado de usuário. */
   function renderComment(comment) {
     const li = document.createElement('li');
-    li.className = 'flex items-start gap-2 text-sm';
+    li.className = 'flex flex-wrap items-start gap-2 text-sm';
     li.dataset.commentId = String(comment.id);
 
     const p = document.createElement('p');
     p.className = 'flex-1 text-slate-700';
 
     const author = document.createElement('strong');
-    author.className = 'text-slate-800';
+    // O espaço entre autor e texto é CSS (`mr-1`), não um `' '` dentro do
+    // texto: assim editar o comentário, que reescreve o `textContent`, não
+    // engole a separação (era exatamente o que acontecia antes).
+    author.className = 'text-slate-800 mr-1';
     author.textContent = comment.author?.name ?? '';
 
     const content = document.createElement('span');
     content.dataset.commentContent = '';
-    content.textContent = ` ${comment.content}`;
+    content.textContent = comment.content;
 
     p.append(author, content);
     li.appendChild(p);
     li.appendChild(buildLikeForm(comment));
 
-    // Quem comentou pela própria sessão é o dono — pode apagar.
-    const form = document.createElement('form');
-    form.method = 'post';
-    form.action = `/comments/${comment.id}/delete`;
-    form.dataset.commentDelete = '';
+    // Quem comentou pela própria sessão é o dono — pode editar e apagar. O
+    // markup tem de ser igual ao do partial `comment.ejs`, senão o comentário
+    // recém-criado seria um cidadão de segunda classe (sem edição) até a
+    // próxima recarga.
+    const acoes = document.createElement('div');
+    acoes.className = 'flex items-center gap-2';
 
-    const button = document.createElement('button');
-    button.type = 'submit';
-    button.className = 'text-xs text-red-600 hover:underline';
-    button.textContent = 'apagar';
+    const editar = document.createElement('button');
+    editar.type = 'button';
+    editar.dataset.commentEdit = '';
+    editar.className = 'text-xs text-slate-500 hover:underline';
+    editar.textContent = 'editar';
 
-    form.appendChild(button);
-    li.appendChild(form);
+    const apagarForm = document.createElement('form');
+    apagarForm.method = 'post';
+    apagarForm.action = `/comments/${comment.id}/delete`;
+    apagarForm.dataset.commentDelete = '';
+
+    const apagar = document.createElement('button');
+    apagar.type = 'submit';
+    apagar.className = 'text-xs text-red-600 hover:underline';
+    apagar.textContent = 'apagar';
+
+    apagarForm.appendChild(apagar);
+    acoes.append(editar, apagarForm);
+    li.appendChild(acoes);
+
+    const edicao = document.createElement('form');
+    edicao.method = 'post';
+    edicao.action = `/comments/${comment.id}/edit`;
+    edicao.dataset.commentEditForm = '';
+    edicao.className = 'hidden basis-full flex gap-2 mt-1';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'content';
+    input.required = true;
+    input.maxLength = 2000;
+    input.value = comment.content;
+    input.className = 'flex-1 border rounded px-2 py-1 text-sm';
+
+    const salvar = document.createElement('button');
+    salvar.type = 'submit';
+    salvar.className = 'text-xs bg-slate-800 text-white rounded px-2 py-1';
+    salvar.textContent = 'salvar';
+
+    const cancelar = document.createElement('button');
+    cancelar.type = 'button';
+    cancelar.dataset.commentEditCancel = '';
+    cancelar.className = 'text-xs text-slate-500 hover:underline';
+    cancelar.textContent = 'cancelar';
+
+    edicao.append(input, salvar, cancelar);
+    li.appendChild(edicao);
+
     return li;
   }
 
@@ -221,6 +285,78 @@
     button.append(svg, counter);
     form.appendChild(button);
     return form;
+  }
+
+  // ---------------------------------------------------------- editar comentário
+
+  function abrirEdicao(li) {
+    if (!li) return;
+    li.querySelector('[data-comment-content]')?.classList.add('hidden');
+    const form = li.querySelector('[data-comment-edit-form]');
+    if (!form) return;
+    form.classList.remove('hidden');
+    const input = form.querySelector('input[name="content"]');
+    if (input) {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
+  }
+
+  function fecharEdicao(li) {
+    if (!li) return;
+    li.querySelector('[data-comment-content]')?.classList.remove('hidden');
+    li.querySelector('[data-comment-edit-form]')?.classList.add('hidden');
+  }
+
+  async function updateComment(form) {
+    if (form.dataset.pending === '1') return;
+    const li = form.closest('[data-comment-id]');
+    const input = form.querySelector('input[name="content"]');
+    const texto = input.value.trim();
+    if (!texto) return;
+
+    form.dataset.pending = '1';
+    const salvar = form.querySelector('button[type="submit"]');
+    if (salvar) salvar.disabled = true;
+
+    // O form aponta para `/comments/:id/edit` (fallback sem JS); o fetch usa o
+    // PATCH do mesmo recurso, sem o sufixo.
+    const url = form.action.replace(/\/edit$/, '');
+
+    try {
+      const res = await fetch(url, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: texto }),
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const comment = await res.json();
+
+      const span = li.querySelector('[data-comment-content]');
+      if (span) span.textContent = comment.content;
+      marcarEditado(li);
+      fecharEdicao(li);
+    } catch (err) {
+      showError(
+        form,
+        err.name === 'AbortError' ? 'A edição demorou demais.' : 'Não foi possível salvar a edição.',
+      );
+    } finally {
+      if (salvar) salvar.disabled = false;
+      delete form.dataset.pending;
+    }
+  }
+
+  function marcarEditado(li) {
+    if (!li || li.querySelector('[data-comment-edited]')) return;
+    const marca = document.createElement('span');
+    marca.dataset.commentEdited = '';
+    marca.className = 'text-xs text-slate-400';
+    marca.textContent = ' (editado)';
+    li.querySelector('[data-comment-content]')?.after(marca);
   }
 
   async function deleteComment(form) {

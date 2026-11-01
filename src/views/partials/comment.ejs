@@ -1,18 +1,27 @@
 <%#
-  Um comentário, usado pelo feed (Aula 05 → Trabalho II) e pela página do post.
+  Um comentário, usado pelo feed e pela página do post (via postCard.ejs).
 
   Precisa de `comment` e `currentUser` no escopo (locals do res.render).
   `comment` deve trazer `author` (campos públicos), `_count.likes` e
   `likedByMe` — os dois Controllers que listam comentários preenchem isso.
 
-  `data-comment-id`, `data-comment-content`, `data-comment-like` e
-  `data-comment-delete` são os ganchos da delegação de eventos em
-  public/feed.js: o mesmo listener cobre o comentário recém-inserido.
+  `data-comment-id`, `data-comment-content`, `data-comment-like`,
+  `data-comment-delete`, `data-comment-edit` e `data-comment-edit-form` são os
+  ganchos da delegação de eventos em public/feed.js: o mesmo listener cobre o
+  comentário recém-inserido.
+
+  Edição (atividade 7) tem dois caminhos, como manda o ADR-0004: com JS o botão
+  "editar" troca o texto por um campo e o `fetch` usa PATCH; sem JS, o form
+  manda POST para `/comments/:id/edit` e a página recarrega.
 %>
-<li class="flex items-start gap-2 text-sm" data-comment-id="<%= comment.id %>">
+<% const editado = comment.updatedAt && comment.updatedAt > comment.createdAt; %>
+<li class="flex flex-wrap items-start gap-2 text-sm" data-comment-id="<%= comment.id %>">
   <p class="flex-1 text-slate-700">
-    <strong class="text-slate-800"><%= comment.author.name %></strong>
+    <strong class="text-slate-800 mr-1"><%= comment.author.name %></strong>
     <span data-comment-content><%= comment.content %></span>
+    <% if (editado) { %>
+      <span class="text-xs text-slate-400" data-comment-edited>(editado)</span>
+    <% } %>
   </p>
 
   <%# Curtida do comentário (atividade 3). Mesma forma do botão de post, para o
@@ -33,8 +42,29 @@
   </form>
 
   <% if (comment.authorId === currentUser.id) { %>
-    <form method="post" action="/comments/<%= comment.id %>/delete" data-comment-delete>
-      <button type="submit" class="text-xs text-red-600 hover:underline">apagar</button>
+    <div class="flex items-center gap-2">
+      <button type="button" data-comment-edit class="text-xs text-slate-500 hover:underline">editar</button>
+      <form method="post" action="/comments/<%= comment.id %>/delete" data-comment-delete>
+        <button type="submit" class="text-xs text-red-600 hover:underline">apagar</button>
+      </form>
+    </div>
+
+    <form
+      method="post"
+      action="/comments/<%= comment.id %>/edit"
+      class="hidden basis-full flex gap-2 mt-1"
+      data-comment-edit-form
+    >
+      <input
+        type="text"
+        name="content"
+        value="<%= comment.content %>"
+        required
+        maxlength="2000"
+        class="flex-1 border rounded px-2 py-1 text-sm"
+      />
+      <button type="submit" class="text-xs bg-slate-800 text-white rounded px-2 py-1">salvar</button>
+      <button type="button" data-comment-edit-cancel class="text-xs text-slate-500 hover:underline">cancelar</button>
     </form>
   <% } %>
 </li>

@@ -64,6 +64,35 @@ export function createCommentRoutes(prisma: PrismaClient): Router {
     }),
   );
 
+  // Editar o próprio comentário (atividade 7). PATCH é o verbo certo, e o
+  // `fetch` do feed usa ele; o `<form>` do fallback usa POST /edit.
+  router.patch(
+    '/comments/:id',
+    requireAuth,
+    requireOwnComment(prisma),
+    asyncHandler(async (req, res) => {
+      const comment = await comments.update(parseIdParam(req.params.id), req.body);
+
+      if (wantsJson(req)) {
+        res.json(comment);
+        return;
+      }
+      res.redirect(req.get('referer') ?? '/');
+    }),
+  );
+
+  // Fallback sem JavaScript de edição: o formulário inline é interceptado pelo
+  // feed.js; sem JS, ele manda POST aqui e a página recarrega com o texto novo.
+  router.post(
+    '/comments/:id/edit',
+    requireAuth,
+    requireOwnComment(prisma),
+    asyncHandler(async (req, res) => {
+      await comments.update(parseIdParam(req.params.id), req.body);
+      res.redirect(req.get('referer') ?? '/');
+    }),
+  );
+
   // Fallback sem JavaScript: `<form>` só sabe POST, e o ADR-0004 exige que a
   // ação funcione sem JS. Mesma autorização, mesmo efeito — a diferença é só
   // o verbo e o formato da resposta (sempre redirect).

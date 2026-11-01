@@ -91,6 +91,37 @@ export class CommentController {
     });
   }
 
+  /**
+   * Edita o conteúdo de um comentário (atividade 7). A autorização já passou
+   * pelo `requireOwnComment` — esta camada não sabe quem está chamando, só
+   * aplica a mudança. `updatedAt` é `@updatedAt` no schema, então o Prisma o
+   * atualiza sozinho; a view usa isso para marcar "(editado)".
+   *
+   * A validação é a MESMA do `create` (obrigatório, trim, limite): duplicar a
+   * regra em outro método seria a divergência que o trabalho pede para evitar.
+   */
+  async update(commentId: number, body: unknown) {
+    const { content } = (body ?? {}) as { content?: unknown };
+
+    if (typeof content !== 'string' || content.trim().length === 0) {
+      throw new ValidationError('"content" é obrigatório');
+    }
+
+    const text = content.trim();
+    if (text.length > MAX_COMMENT_LENGTH) {
+      throw new ValidationError(`"content" deve ter no máximo ${MAX_COMMENT_LENGTH} caracteres`);
+    }
+
+    return this.prisma.comment.update({
+      where: { id: commentId },
+      data: { content: text },
+      include: {
+        author: { select: publicUserSelect },
+        _count: { select: { likes: true, replies: true } },
+      },
+    });
+  }
+
   // A checagem "é dono do comentário?" já rodou no middleware
   // `requireOwnComment` (src/auth/middleware.ts), que também devolve 404
   // quando o comentário não existe — por isso aqui o `delete` direto é seguro.

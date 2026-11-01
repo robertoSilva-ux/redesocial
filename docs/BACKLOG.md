@@ -214,9 +214,33 @@ eventos da discussão item 4).
 
 | Cartão | Escopo                                                                    | Aceite                                                                              |
 | ------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| E6a    | `PATCH /comments/:id`, edição inline                                      | próprio 200, de outro 403, vazio 400, 404                                           |
+| E6a ✅ | `PATCH /comments/:id`, edição inline                                      | próprio 200, de outro 403, vazio 400, 404                                           |
 | E6b    | comentários por `_count.likes` (consulta própria, fora do `buildOrderBy`) | mais curtido primeiro, empate estável                                               |
 | E6c    | `User.lastSeenAt` + contador de novidades                                 | conta like/comment de terceiros nos meus posts, não os meus, zera no próximo acesso |
+
+### E6a — editar o próprio comentário — ✅ concluído em 31/10
+
+`CommentController.update(commentId, body)` reaproveita **a mesma** validação do `create` (obrigatório,
+trim, limite de 2000) — regra duplicada em outro método é a divergência que o trabalho pede para
+evitar — e devolve o comentário com `author` público e `_count.likes`.
+
+Duas rotas, um efeito (ADR-0004): `PATCH /comments/:id` devolve JSON para o `fetch` do feed;
+`POST /comments/:id/edit` é o fallback do `<form>` sem JavaScript, que redireciona. As duas passam por
+`requireAuth` + `requireOwnComment`, então a autorização não depende do verbo.
+
+Na UI, o botão "editar" troca o texto por um campo inline (foco no fim do texto, `Esc`-equivalente pelo
+botão "cancelar"), e o `updateComment` do `feed.js` manda `PATCH` e atualiza o `<span>` no lugar. Dois
+detalhes que só a verificação no navegador mostrou:
+
+- o comentário recém-criado também ganhou os botões (antes só o partial os tinha, e o comentário novo
+  ficaria sem edição até a próxima recarga);
+- o espaço entre autor e texto era um `' '` dentro do `textContent` do comentário, então **editar
+  apagava a separação** ("Carlaespaco DEPOIS..."). Corrigido movendo o espaço para `mr-1` no `<strong>`,
+  onde reescrever o texto não o destrói.
+
+`(editado)` aparece comparando `updatedAt > createdAt` — sem campo novo de "editado" no schema.
+7 testes novos (total **140**): próprio 200 com trim, alheio 403 sem mudar o texto, vazio/limite/id
+malformado 400, sem sessão 302, inexistente 404, fallback com redirect e a marca na view.
 
 ## E7 — fechamento
 
@@ -229,16 +253,17 @@ eventos da discussão item 4).
 | Critério do enunciado                           | Provado por                                                 |
 | ----------------------------------------------- | ----------------------------------------------------------- |
 | Testes passam, sem regressão da Aula 05         | suíte inteira em cada cartão                                |
-| Cobertura: feliz + erro por funcionalidade nova | testes de integração em E1, E2, E3, E5, E6                  |
+| Cobertura: feliz + erro por funcionalidade nova | testes de integração em E1, E2, E3, E4, E5, E6              |
 | Autorização sempre da sessão                    | `requireAuth`/`requireOwnComment` e testes de 403           |
 | Fronteira de módulo                             | tabela em `arquitetura/c4.md` (nível 3a) + `ADR-0001`       |
 | Migração sem perda de dados                     | teste da migração em E3b                                    |
-| UI sem reload                                   | DevTools nos cartões E1b, E2b, E5c                          |
-| Registro de decisões                            | `docs/adr/` 0001–0009 + `README.md` (discussão obrigatória) |
+| UI sem reload                                   | DevTools nos cartões E1b, E2b, E4, E5c, E6a                 |
+| Registro de decisões                            | `docs/adr/` 0001–0010 + `README.md` (discussão obrigatória) |
 
 ## Decisões que travam o backlog
 
-| Cartão | Decisão                                     | Consequência de errar                           |
-| ------ | ------------------------------------------- | ----------------------------------------------- |
-| E3a    | `PostImage` novo × reaproveitar `Image`     | define a migração inteira do item 4             |
-| E5a    | fragmento HTML × JSON + template no cliente | duplica ou não o markup do card em dois lugares |
+| Cartão | Decisão                                     | Consequência de errar                           | Estado            |
+| ------ | ------------------------------------------- | ----------------------------------------------- | ----------------- |
+| E3a    | `PostImage` novo × reaproveitar `Image`     | define a migração inteira do item 4             | decidida (0009)   |
+| E5a    | fragmento HTML × JSON + template no cliente | duplica ou não o markup do card em dois lugares | decidida (0010)   |
+| E6c    | semântica do primeiro acesso (`lastSeenAt` nulo) | define o que conta como "novidade" para quem nunca entrou | **em aberto** |

@@ -297,3 +297,100 @@ describe('feed — UI de comentários (E1b)', () => {
     expect(deletes).toBe(1);
   });
 });
+
+describe('PATCH /comments/:id (editar o próprio comentário — atividade 7)', () => {
+  async function comentarioDo(email: string, postId: number) {
+    const { agent, userId } = await registerAndLogin(app, prisma, email, email);
+    const res = await agent.post(`/posts/${postId}/comments`).set(asJson).send({ content: `texto de ${email}` });
+    return { agent, userId, commentId: res.body.id as number };
+  }
+
+  it('edita o próprio comentário e devolve o texto novo com updatedAt maior', async () => {
+    const { leitor, post } = await cenario();
+    const meu = await comentarioDo('leitor2@exemplo.com', post.id);
+
+    const res = await meu.agent
+      .patch(`/comments/${meu.commentId}`)
+      .set(asJson)
+      .send({ content: '  texto editado  ' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.content).toBe('texto editado'); // trim aplicado
+    expect(new Date(res.body.updatedAt).getTime()).toBeGreaterThanOrEqual(
+      new Date(res.body.createdAt).getTime(),
+    );
+
+    const noBanco = await prisma.comment.findUniqueOrThrow({ where: { id: meu.commentId } });
+    expect(noBanco.content).toBe('texto editado');
+    expect(leitor.userId).toBeGreaterThan(0);
+  });
+
+  it('não edita comentário de outra pessoa → 403 (e o texto não muda)', async () => {
+    const { autor, post } = await cenario();
+    const alheio = await comentarioDo('leitor3@exemplo.com', post.id);
+
+    const res = await autor.agent
+      .patch(`/comments/${alheio.commentId}`)
+      .set(asJson)
+      .send({ content: 'sequestrei o comentário' });
+
+    expect(res.status).toBe(403);
+    const noBanco = await prisma.comment.findUniqueOrThrow({ where: { id: alheio.commentId } });
+    expect(noBanco.content).toBe('texto de leitor3@exemplo.com');
+  });
+
+  it('conteúdo vazio → 400 · acima do limite → 400 · id malformado → 400', async () => {
+    const { post } = await cenario();
+    const meu = await comentarioDo('leitor4@exemplo.com', post.id);
+
+    const vazio = await meu.agent.patch(`/comments/${meu.commentId}`).set(asJson).send({ content: '   ' });
+    const grande = await meu.agent
+      .patch(`/comments/${meu.commentId}`)
+      .set(asJson)
+      .send({ content: 'x'.repeat(MAX_COMMENT_LENGTH + 1) });
+    const malformado = await meu.agent.patch('/comments/abc').set(asJson).send({ content: 'oi' });
+
+    expect(vazio.status).toBe(400);
+    expect(grande.status).toBe(400);
+    expect(malformado.status).toBe(400);
+  });
+
+  it('sem sessão → 302 /login · inexistente → 404', async () => {
+    const { autor, post } = await cenario();
+    const alvo = await comentarioDo('leitor5@exemplo.com', post.id);
+
+    const semSessao = await request(app).patch(`/comments/${alvo.commentId}`).set(asJson).send({ content: 'x' });
+    const inexistente = await autor.agent.patch('/comments/999999').set(asJson).send({ content: 'x' });
+
+    expect(semSessao.status).toBe(302);
+    expect(inexistente.status).toBe(404);
+  });
+
+  it('fallback sem JavaScript: POST /comments/:id/edit volta para a página anterior', async () => {
+    const { post } = await cenario();
+    const meu = await comentarioDo('leitor6@exemplo.com', post.id);
+
+    const res = await meu.agent
+      .post(`/comments/${meu.commentId}/edit`)
+      .type('form')
+      .set('Referer', `/posts/${post.id}`)
+      .send({ content: 'editado sem JS' });
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(`/posts/${post.id}`);
+    const noBanco = await prisma.comment.findUniqueOrThrow({ where: { id: meu.commentId } });
+    expect(noBanco.content).toBe('editado sem JS');
+  });
+
+  it('a view marca "(editado)" depois da edição', async () => {
+    const { autor, post } = await cenario();
+    const meu = await comentarioDo('leitor7@exemplo.com', post.id);
+    await meu.agent.patch(`/comments/${meu.commentId}`).set(asJson).send({ content: 'agora editado' });
+
+    const res = await autor.agent.get(`/posts/${post.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('agora editado');
+    expect(res.text).toMatch(/data-comment-edited/);
+  });
+});
